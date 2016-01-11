@@ -8,7 +8,7 @@
 #define DATA_PIN 6  // Data pin for led comunication
 #define BRIGHTNESS_THRESHOLD 150
 #define BLACK 0x000000
-#define FRAMES_PER_SECOND  120
+#define FRAMES_PER_SECOND  24
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 
 CRGB leds[NUM_LEDS]; // Define LEDs strip
@@ -31,7 +31,6 @@ BH1750 lightMeter;
 
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void(*SimplePatternList[])();
-//SimplePatternList gPatterns = { rainbow, confetti, sinelon, juggle };
 SimplePatternList gPatterns = { rainbow };
 uint8_t gCurrentPatternNumber = 0; // Index number of which pattern is current
 
@@ -108,8 +107,8 @@ void TimeToArray() {
 
 	if (Dot) 
 	{ 
-		leds[14] = ledColor;
-		leds[15] = ledColor;
+		leds[14] = CHSV(gHue, 255, 255);
+		leds[15] = CHSV(gHue, 255, 255);
 	}
 	else 
 	{
@@ -121,7 +120,7 @@ void TimeToArray() {
 		if (i == 1) {
 			cursor = 23;
 			for (int k = 0; k <= 6; k++) {
-				if (digits[digit][k] == 1) { leds[cursor] = ledColor; }
+				if (digits[digit][k] == 1) { leds[cursor] = CHSV(gHue, 255, 255); }
 				else if (digits[digit][k] == 0) { leds[cursor] = BLACK; };
 				cursor++;
 			};
@@ -129,7 +128,7 @@ void TimeToArray() {
 		else if (i == 2) {
 			cursor -= 14;
 			for (int k = 0; k <= 6; k++) {
-				if (digits[digit][k] == 1) { leds[cursor] = ledColor; }
+				if (digits[digit][k] == 1) { leds[cursor] = CHSV(gHue, 255, 255); }
 				else if (digits[digit][k] == 0) { leds[cursor] = BLACK; };
 				cursor++;
 			};
@@ -137,7 +136,7 @@ void TimeToArray() {
 		else if (i == 3) {
 			cursor = 7;
 			for (int k = 0; k <= 6; k++) {
-				if (digits[digit][k] == 1) { leds[cursor] = ledColor; }
+				if (digits[digit][k] == 1) { leds[cursor] = CHSV(gHue, 255, 255); }
 				else if (digits[digit][k] == 0) { leds[cursor] = BLACK; };
 				cursor++;
 			};
@@ -145,7 +144,7 @@ void TimeToArray() {
 		else if (i == 4) {
 			cursor = 0;
 			for (int k = 0; k <= 6; k++) {
-				if (digits[digit][k] == 1) { leds[cursor] = ledColor; }
+				if (digits[digit][k] == 1) { leds[cursor] = CHSV(gHue, 255, 255); }
 				else if (digits[digit][k] == 0) { leds[cursor] = BLACK; };
 				cursor++;
 			};
@@ -218,7 +217,8 @@ void loop()  // Main loop
 	// Call the current pattern function once, updating the 'leds' array
 	//gPatterns[gCurrentPatternNumber]();
 	FastLED.show();
+	gHue++;
 	// insert a delay to keep the framerate modest
 	FastLED.delay(1000 / FRAMES_PER_SECOND);
-	EVERY_N_MILLISECONDS(20) { gHue++; } // slowly cycle the "base color" through the rainbow
+	//EVERY_N_MILLISECONDS(20) { gHue++; } // slowly cycle the "base color" through the rainbow
 }
