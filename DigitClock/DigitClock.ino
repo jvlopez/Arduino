@@ -3,11 +3,13 @@
 #include <Wire.h> 
 #include "FastLED.h"
 #include <BH1750.h>
-#define NUM_LEDS 29 // Number of LED controles (remember I have 3 leds / controler)
+#define NUM_LEDS 30 // Number of LED controles (remember I have 3 leds / controller)
 #define COLOR_ORDER RGB  // Define color order for your strip
 #define DATA_PIN 6  // Data pin for led comunication
 #define BRIGHTNESS_THRESHOLD 150
 #define BLACK 0x000000
+#define FRAMES_PER_SECOND  120
+#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 
 CRGB leds[NUM_LEDS]; // Define LEDs strip
 byte digits[10][7] = { {0,1,1,1,1,1,1},  // Digit 0
@@ -24,20 +26,41 @@ bool Dot = true;  //Dot state
 int timeChanged = 0;
 int ledColor = 0xFF9933; // Color used (in hex)
 uint16_t brightness = 0;
+uint8_t gHue = 0; // rotating "base color" used by many of the patterns
 BH1750 lightMeter;
+
+// List of patterns to cycle through.  Each is defined as a separate function below.
+typedef void(*SimplePatternList[])();
+//SimplePatternList gPatterns = { rainbow, confetti, sinelon, juggle };
+SimplePatternList gPatterns = { rainbow };
+uint8_t gCurrentPatternNumber = 0; // Index number of which pattern is current
 
 void setup(){
 	Serial.begin(9600);
 	Wire.begin();
 	lightMeter.begin();
-	LEDS.addLeds<WS2811, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS); // Set LED strip type
+	delay(3000); // 3 second delay for recovery
+	LEDS.addLeds<WS2811, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);; // Set LED strip type
 	LEDS.setBrightness(255); // Set initial brightness
-	pinMode(2, INPUT_PULLUP); // Define ???
+	pinMode(2, INPUT_PULLUP); // Define Color Mode
 	pinMode(4, INPUT_PULLUP); // Define Hours adjust button pin
 	pinMode(5, INPUT_PULLUP); // Define Minutes adjust button pin
 	pinMode(3, INPUT_PULLUP); // Defines Minutes adjust button pin
 }
-// Get time in a single number, if hours will be a single digit then time will be displayed 155 instead of 0155
+
+void nextPattern()
+{
+	// add one to the current pattern number, and wrap around at the end
+	Serial.println("Next pattern");
+	gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE(gPatterns);
+}
+
+void rainbow()
+{
+	// FastLED's built-in rainbow generator
+	fill_rainbow(leds, NUM_LEDS, gHue, 7);
+}
+
 int GetTime() {
 	tmElements_t Now;
 	RTC.read(Now);
@@ -149,7 +172,8 @@ void printTime(tmElements_t time)
 void TimeAdjust() {
 	int buttonH = digitalRead(4);
 	int buttonM = digitalRead(5);
-	if (buttonH == LOW || buttonM == LOW)
+	int buttonColor = digitalRead(2);
+	if (buttonH == LOW || buttonM == LOW || buttonColor == LOW)
 	{
 		delay(500);
 		tmElements_t Now;
@@ -158,10 +182,16 @@ void TimeAdjust() {
 		int minutes = Now.Minute;
 		int second = Now.Second;
 		if (buttonH == LOW) {
-			if (Now.Hour == 23) { Now.Hour = 0; }
-			else { Now.Hour += 1; };
+			if (Now.Hour == 23) 
+			{ 
+				Now.Hour = 0; 
+			}
+			else 
+			{ 
+				Now.Hour += 1; 
+			};
 		}
-		else {
+		else if(buttonM == LOW) {
 			if (Now.Minute == 59)
 			{
 				Now.Minute = 0;
@@ -169,7 +199,12 @@ void TimeAdjust() {
 			else {
 				Now.Minute += 1;
 			};
+		}
+		else if (buttonColor == LOW)
+		{
+			nextPattern();
 		};
+
 		printTime(Now);
 		RTC.write(Now);
 	}
@@ -179,5 +214,11 @@ void loop()  // Main loop
 	BrightnessCheck(); // Check brightness
 	TimeAdjust(); // Check to se if time is geting modified
 	TimeToArray(); // Get leds array with required configuration
-	FastLED.show(); // Display leds array
+	// send the 'leds' array out to the actual LED strip
+	// Call the current pattern function once, updating the 'leds' array
+	//gPatterns[gCurrentPatternNumber]();
+	FastLED.show();
+	// insert a delay to keep the framerate modest
+	FastLED.delay(1000 / FRAMES_PER_SECOND);
+	EVERY_N_MILLISECONDS(20) { gHue++; } // slowly cycle the "base color" through the rainbow
 }
