@@ -22,9 +22,9 @@ byte digits[10][7] = { {0,1,1,1,1,1,1},  // Digit 0
 					 {0,1,1,0,0,0,1},   // Digit 7
 					 {1,1,1,1,1,1,1},   // Digit 8
 					 {1,1,1,1,0,1,1} };  // Digit 9 | 2D Array for numbers on 7 segment
-bool Dot = true;  //Dot state
+int digitOffset[4] = { 23, 16, 7, 0 };
+bool dotIsVisible = true;
 int timeChanged = 0;
-int ledColor = 0xFF9933; // Color used (in hex)
 uint16_t brightness = 0;
 uint8_t gHue = 0; // rotating "base color" used by many of the patterns
 BH1750 lightMeter;
@@ -67,14 +67,8 @@ int GetTime() {
 	int hour = Now.Hour;
 	int minutes = Now.Minute;
 	int second = Now.Second;
-	if (second % 2 == 0) 
-	{ 
-		Dot = false; 
-	}
-	else 
-	{ 
-		Dot = true; 
-	};
+
+	(second % 2 == 0) ? dotIsVisible = false : true;
 	return (hour * 100 + minutes);
 };
 
@@ -100,57 +94,26 @@ void BrightnessCheck() {
 	}
 };
 
-// Convert time to array needet for display 
+// Convert time to array needed for display 
 void TimeToArray() {
-	int Now = GetTime();  // Get time
-	int cursor = 30;
+	int Now = GetTime();
+	int cursor = NUM_LEDS;
+	CHSV color = CHSV(gHue, 255, 255);
 
-	if (Dot) 
-	{ 
-		leds[14] = CHSV(gHue, 255, 255);
-		leds[15] = CHSV(gHue, 255, 255);
-	}
-	else 
+	dotIsVisible ? (leds[14] = color) : (leds[14] = BLACK);
+	dotIsVisible ? (leds[15] = color) : (leds[15] = BLACK);
+
+	for (int i = 0; i < 4; i++)
 	{
-		leds[14] = BLACK;
-		leds[15] = BLACK;
-	};
-	for (int i = 1; i <= 4; i++) {
 		int digit = Now % 10; // get last digit in time
-		if (i == 1) {
-			cursor = 23;
-			for (int k = 0; k <= 6; k++) {
-				if (digits[digit][k] == 1) { leds[cursor] = CHSV(gHue, 255, 255); }
-				else if (digits[digit][k] == 0) { leds[cursor] = BLACK; };
-				cursor++;
-			};
-		}
-		else if (i == 2) {
-			cursor -= 14;
-			for (int k = 0; k <= 6; k++) {
-				if (digits[digit][k] == 1) { leds[cursor] = CHSV(gHue, 255, 255); }
-				else if (digits[digit][k] == 0) { leds[cursor] = BLACK; };
-				cursor++;
-			};
-		}
-		else if (i == 3) {
-			cursor = 7;
-			for (int k = 0; k <= 6; k++) {
-				if (digits[digit][k] == 1) { leds[cursor] = CHSV(gHue, 255, 255); }
-				else if (digits[digit][k] == 0) { leds[cursor] = BLACK; };
-				cursor++;
-			};
-		}
-		else if (i == 4) {
-			cursor = 0;
-			for (int k = 0; k <= 6; k++) {
-				if (digits[digit][k] == 1) { leds[cursor] = CHSV(gHue, 255, 255); }
-				else if (digits[digit][k] == 0) { leds[cursor] = BLACK; };
-				cursor++;
-			};
-		}
+		int cursor = digitOffset[i];
+		for (int k = 0; k <= 6; k++) {
+			if (digits[digit][k] == 1) { leds[cursor] = color; }
+			else if (digits[digit][k] == 0) { leds[cursor] = BLACK; };
+			cursor++;
+		};
 		Now /= 10;
-	};
+	}
 };
 
 void printTime(tmElements_t time)
