@@ -3,8 +3,13 @@
 #include <Wire.h> 
 #include "FastLED.h"
 #include <BH1750.h>
+
 #define NUM_LEDS 30 // Number of LED controles (remember I have 3 leds / controller)
 #define COLOR_ORDER RGB  // Define color order for your strip
+#define BTN_HOURS_PIN 2
+#define BTN_MINUTES_PIN 3
+#define BTN_BRIGHTNESS_PIN 4
+#define BTN_COLOR_PIN 5
 #define DATA_PIN 6  // Data pin for led comunication
 #define BRIGHTNESS_THRESHOLD 150
 #define BLACK 0x000000
@@ -41,10 +46,10 @@ void setup(){
 	delay(3000); // 3 second delay for recovery
 	LEDS.addLeds<WS2811, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);; // Set LED strip type
 	LEDS.setBrightness(255); // Set initial brightness
-	pinMode(2, INPUT_PULLUP); // Define Color Mode
-	pinMode(4, INPUT_PULLUP); // Define Hours adjust button pin
-	pinMode(5, INPUT_PULLUP); // Define Minutes adjust button pin
-	pinMode(3, INPUT_PULLUP); // Defines Minutes adjust button pin
+	pinMode(BTN_HOURS_PIN, INPUT_PULLUP); // Define Color Mode
+	pinMode(BTN_BRIGHTNESS_PIN, INPUT_PULLUP); // Define Hours adjust button pin
+	pinMode(BTN_COLOR_PIN, INPUT_PULLUP); // Define Minutes adjust button pin
+	pinMode(BTN_MINUTES_PIN, INPUT_PULLUP); // Defines Minutes adjust button pin
 }
 
 void nextPattern()
@@ -83,14 +88,8 @@ void BrightnessCheck() {
 	{
 		Serial.print("Brightness Changed from "); Serial.print(brightness); Serial.print(" to "); Serial.println(sensorValue);
 		brightness = sensorValue;
-		if (brightness < BRIGHTNESS_THRESHOLD)
-		{
-			LEDS.setBrightness(brightnessHigh);
-		}
-		else
-		{
-			LEDS.setBrightness(brightnessLow);
-		}
+
+		(brightness < BRIGHTNESS_THRESHOLD) ? LEDS.setBrightness(brightnessHigh) : LEDS.setBrightness(brightnessLow);
 	}
 };
 
@@ -132,10 +131,11 @@ void printTime(tmElements_t time)
 }
 
 void TimeAdjust() {
-	int buttonH = digitalRead(4);
-	int buttonM = digitalRead(5);
-	int buttonColor = digitalRead(2);
-	if (buttonH == LOW || buttonM == LOW || buttonColor == LOW)
+	int buttonHours = digitalRead(BTN_HOURS_PIN);
+	int buttonMinutes = digitalRead(BTN_MINUTES_PIN);
+	int buttonColorMode = digitalRead(BTN_COLOR_PIN);
+
+	if (buttonHours == LOW || buttonMinutes == LOW || buttonColorMode == LOW)
 	{
 		delay(500);
 		tmElements_t Now;
@@ -143,26 +143,13 @@ void TimeAdjust() {
 		int hour = Now.Hour;
 		int minutes = Now.Minute;
 		int second = Now.Second;
-		if (buttonH == LOW) {
-			if (Now.Hour == 23) 
-			{ 
-				Now.Hour = 0; 
-			}
-			else 
-			{ 
-				Now.Hour += 1; 
-			};
+		if (buttonHours == LOW) {
+			Now.Hour == 23 ? Now.Hour = 0 : Now.Hour++;
 		}
-		else if(buttonM == LOW) {
-			if (Now.Minute == 59)
-			{
-				Now.Minute = 0;
-			}
-			else {
-				Now.Minute += 1;
-			};
+		else if(buttonMinutes == LOW) {
+			Now.Minute == 59 ? Now.Minute = 0 : Now.Minute++;
 		}
-		else if (buttonColor == LOW)
+		else if (buttonColorMode == LOW)
 		{
 			nextPattern();
 		};
