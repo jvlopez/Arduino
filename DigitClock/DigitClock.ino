@@ -12,6 +12,8 @@
 #define BTN_COLOR_PIN 5
 #define DATA_PIN 6  // Data pin for led comunication
 #define BRIGHTNESS_THRESHOLD 150
+#define BRIGHTNESS_LOW 5
+#define BRIGHTNESS_FULL 255
 #define BLACK 0x000000
 #define FRAMES_PER_SECOND  24
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
@@ -54,14 +56,12 @@ void setup(){
 
 void nextPattern()
 {
-	// add one to the current pattern number, and wrap around at the end
 	Serial.println("Next pattern");
 	gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE(gPatterns);
 }
 
 void rainbow()
 {
-	// FastLED's built-in rainbow generator
 	fill_rainbow(leds, NUM_LEDS, gHue, 7);
 }
 
@@ -69,18 +69,12 @@ int GetTime() {
 	tmElements_t Now;
 	RTC.read(Now);
 	printTime(Now);
-	int hour = Now.Hour;
-	int minutes = Now.Minute;
-	int second = Now.Second;
-
-	(second % 2 == 0) ? dotIsVisible = false : true;
-	return (hour * 100 + minutes);
+	dotIsVisible = (Now.Second % 2 == 0);
+	return (Now.Hour * 100 + Now.Minute);
 };
 
 // Check Light sensor and set brightness accordingly
 void BrightnessCheck() {
-	const byte brightnessLow = 5; // Low brightness value
-	const byte brightnessHigh = 255; // High brightness value
 	uint16_t sensorValue = lightMeter.readLightLevel();
 	uint16_t difference = sensorValue - brightness;
 	difference = abs(difference);
@@ -88,8 +82,7 @@ void BrightnessCheck() {
 	{
 		Serial.print("Brightness Changed from "); Serial.print(brightness); Serial.print(" to "); Serial.println(sensorValue);
 		brightness = sensorValue;
-
-		(brightness < BRIGHTNESS_THRESHOLD) ? LEDS.setBrightness(brightnessHigh) : LEDS.setBrightness(brightnessLow);
+		(brightness < BRIGHTNESS_THRESHOLD) ? LEDS.setBrightness(BRIGHTNESS_FULL) : LEDS.setBrightness(BRIGHTNESS_LOW);
 	}
 };
 
@@ -131,11 +124,11 @@ void printTime(tmElements_t time)
 }
 
 void TimeAdjust() {
-	int buttonHours = digitalRead(BTN_HOURS_PIN);
-	int buttonMinutes = digitalRead(BTN_MINUTES_PIN);
-	int buttonColorMode = digitalRead(BTN_COLOR_PIN);
+	int btnHours = digitalRead(BTN_HOURS_PIN);
+	int btnMinutes = digitalRead(BTN_MINUTES_PIN);
+	int btnColorMode = digitalRead(BTN_COLOR_PIN);
 
-	if (buttonHours == LOW || buttonMinutes == LOW || buttonColorMode == LOW)
+	if (btnHours == LOW || btnMinutes == LOW || btnColorMode == LOW)
 	{
 		delay(500);
 		tmElements_t Now;
@@ -143,13 +136,13 @@ void TimeAdjust() {
 		int hour = Now.Hour;
 		int minutes = Now.Minute;
 		int second = Now.Second;
-		if (buttonHours == LOW) {
+		if (btnHours == LOW) {
 			Now.Hour == 23 ? Now.Hour = 0 : Now.Hour++;
 		}
-		else if(buttonMinutes == LOW) {
+		else if(btnMinutes == LOW) {
 			Now.Minute == 59 ? Now.Minute = 0 : Now.Minute++;
 		}
-		else if (buttonColorMode == LOW)
+		else if (btnColorMode == LOW)
 		{
 			nextPattern();
 		};
