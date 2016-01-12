@@ -47,7 +47,7 @@ void setup(){
 	lightMeter.begin();
 	delay(3000); // 3 second delay for recovery
 	LEDS.addLeds<WS2811, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);; // Set LED strip type
-	LEDS.setBrightness(255); // Set initial brightness
+	LEDS.setBrightness(BRIGHTNESS_FULL); // Set initial brightness
 	pinMode(BTN_HOURS_PIN, INPUT_PULLUP); // Define Color Mode
 	pinMode(BTN_BRIGHTNESS_PIN, INPUT_PULLUP); // Define Hours adjust button pin
 	pinMode(BTN_COLOR_PIN, INPUT_PULLUP); // Define Minutes adjust button pin
@@ -86,8 +86,7 @@ void BrightnessCheck() {
 	}
 };
 
-// Convert time to array needed for display 
-void TimeToArray() {
+void TimeToLEDArray() {
 	int Now = GetTime();
 	int cursor = NUM_LEDS;
 	CHSV color = CHSV(gHue, 255, 255);
@@ -114,13 +113,22 @@ void printTime(tmElements_t time)
 	{
 		timeChanged = time.Second;
 		Serial.print("Time: ");
-		Serial.print(time.Hour);
+		print2Digits(time.Hour);
 		Serial.print(":");
-		Serial.print(time.Minute);
+		print2Digits(time.Minute);
 		Serial.print(":");
-		Serial.print(time.Second);
+		print2Digits(time.Second);
 		Serial.println("");
 	}
+}
+
+void print2Digits(byte value)
+{
+	if (value < 10)
+	{
+		Serial.print("0");
+	}
+	Serial.print(value);
 }
 
 void TimeAdjust() {
@@ -155,7 +163,7 @@ void loop()  // Main loop
 {
 	BrightnessCheck(); // Check brightness
 	TimeAdjust(); // Check to se if time is geting modified
-	TimeToArray(); // Get leds array with required configuration
+	TimeToLEDArray(); // Get leds array with required configuration
 	// send the 'leds' array out to the actual LED strip
 	// Call the current pattern function once, updating the 'leds' array
 	//gPatterns[gCurrentPatternNumber]();
