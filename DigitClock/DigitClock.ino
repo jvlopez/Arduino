@@ -1,22 +1,30 @@
 #include <DS3232RTC.h>
-#include <Time.h> 
-#include <Wire.h> 
+#include <Time.h>
+#include <Wire.h>
+#include <EEPROM.h>
 #include "FastLED.h"
 #include <BH1750.h>
 
-#define NUM_LEDS 30 // Number of LED controles (remember I have 3 leds / controller)
-#define COLOR_ORDER RGB  // Define color order for your strip
+#define NUM_LEDS 30 // Number of LED controllers (3 LEDS per controller)
+#define COLOR_ORDER RGB  // Define LED strip color order
 #define BTN_HOURS_PIN 2
 #define BTN_MINUTES_PIN 3
 #define BTN_BRIGHTNESS_PIN 4
 #define BTN_COLOR_PIN 5
 #define DATA_PIN 6  // Data pin for led comunication
-#define BRIGHTNESS_THRESHOLD 150
-#define BRIGHTNESS_LOW 5
+#define EEPROM_SETTINGS_ADDR 0
+#define BRIGHTNESS_MAX_LUX 20000
+#define BRIGHTNESS_THRESHOLD 10
+#define BRIGHTNESS_OFF 0
+#define BRIGHTNESS_LOWEST 10
+#define BRIGHTNESS_DIMMED 64
+#define BRIGHTNESS_MEDIUM 128
+#define BRIGHTNESS_BRIGHT 192
 #define BRIGHTNESS_FULL 255
 #define BLACK 0x000000
 #define FRAMES_PER_SECOND  24
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
+#define INITIAL_SETTINGS { FULL, 0}
 
 CRGB leds[NUM_LEDS]; // Define LEDs strip
 byte digits[10][7] = { {0,1,1,1,1,1,1},  // Digit 0
@@ -29,12 +37,29 @@ byte digits[10][7] = { {0,1,1,1,1,1,1},  // Digit 0
 					 {0,1,1,0,0,0,1},   // Digit 7
 					 {1,1,1,1,1,1,1},   // Digit 8
 					 {1,1,1,1,0,1,1} };  // Digit 9 | 2D Array for numbers on 7 segment
-int digitOffset[4] = { 23, 16, 7, 0 };
+uint8_t digitOffset[4] = { 23, 16, 7, 0 };
 bool dotIsVisible = true;
 int timeChanged = 0;
-uint16_t brightness = 0;
-uint8_t gHue = 0; // rotating "base color" used by many of the patterns
+uint8_t brightness = 0;
+uint8_t gHue = 0;
 BH1750 lightMeter;
+
+struct Settings {
+	uint8_t brightnessMode;
+	uint8_t colorMode;
+};
+
+enum BrightnessMode {
+	SENSOR_DRIVEN,
+	DIMMED,
+	MEDIUM,
+	BRIGHT,
+	FULL,
+	OFF,
+	SIZE
+};
+
+Settings settings = INITIAL_SETTINGS;
 
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void(*SimplePatternList[])();
@@ -44,10 +69,12 @@ uint8_t gCurrentPatternNumber = 0; // Index number of which pattern is current
 void setup(){
 	Serial.begin(9600);
 	Wire.begin();
-	lightMeter.begin();
-	delay(3000); // 3 second delay for recovery
+	lightMeter.begin(BH1750_CONTINUOUS_LOW_RES_MODE);
+	getOrInitializeSettings();
+	printSettings();
+	//delay(1000); // 1 second delay for recovery
+	setBrightness(BrightnessModeToValue(settings.brightnessMode));
 	LEDS.addLeds<WS2811, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);; // Set LED strip type
-	LEDS.setBrightness(BRIGHTNESS_FULL); // Set initial brightness
 	pinMode(BTN_HOURS_PIN, INPUT_PULLUP); // Define Color Mode
 	pinMode(BTN_BRIGHTNESS_PIN, INPUT_PULLUP); // Define Hours adjust button pin
 	pinMode(BTN_COLOR_PIN, INPUT_PULLUP); // Define Minutes adjust button pin
@@ -58,6 +85,33 @@ void nextPattern()
 {
 	Serial.println("Next pattern");
 	gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE(gPatterns);
+}
+
+void changeBrightnessMode()
+{
+	settings.brightnessMode = (settings.brightnessMode + 1) % SIZE;
+	persistSettings();
+	printSettings();
+	setBrightness(BrightnessModeToValue(settings.brightnessMode));
+}
+
+uint8_t BrightnessModeToValue(uint8_t brightnessMode)
+{
+	switch (brightnessMode)
+	{
+		case SENSOR_DRIVEN:
+			return BrightnessValueBySensor();
+		case DIMMED:
+			return BRIGHTNESS_DIMMED;
+		case MEDIUM:
+			return BRIGHTNESS_MEDIUM;
+		case BRIGHT:
+			return BRIGHTNESS_BRIGHT;
+		case OFF:
+			return BRIGHTNESS_OFF;
+		default:
+			return BRIGHTNESS_FULL;
+	}
 }
 
 void rainbow()
@@ -73,18 +127,39 @@ int GetTime() {
 	return (Now.Hour * 100 + Now.Minute);
 };
 
-// Check Light sensor and set brightness accordingly
-void BrightnessCheck() {
-	uint16_t sensorValue = lightMeter.readLightLevel();
-	uint16_t difference = sensorValue - brightness;
-	difference = abs(difference);
-	if (difference > 10)
+//// Check Light sensor and set brightness accordingly
+//void BrightnessCheck() {
+//	uint16_t sensorValue = lightMeter.readLightLevel();
+//	uint16_t difference = sensorValue - brightness;
+//	difference = abs(difference);
+//	if (difference > 10)
+//	{
+//		Serial.print("Brightness Changed from "); Serial.print(brightness); Serial.print(" to "); Serial.println(sensorValue);
+//		brightness = sensorValue;
+//		(brightness < BRIGHTNESS_THRESHOLD) ? LEDS.setBrightness(BRIGHTNESS_FULL) : LEDS.setBrightness(BRIGHTNESS_DIMMED);
+//	}
+//};
+
+uint8_t BrightnessValueBySensor()
+{
+	// TODO: Make a intelligent function here.
+	uint16_t lightSensor = lightMeter.readLightLevel();
+	if (lightSensor > BRIGHTNESS_MAX_LUX)
 	{
-		Serial.print("Brightness Changed from "); Serial.print(brightness); Serial.print(" to "); Serial.println(sensorValue);
-		brightness = sensorValue;
-		(brightness < BRIGHTNESS_THRESHOLD) ? LEDS.setBrightness(BRIGHTNESS_FULL) : LEDS.setBrightness(BRIGHTNESS_LOW);
+		lightSensor = BRIGHTNESS_MAX_LUX;
 	}
-};
+	uint8_t intensity = map(lightSensor, BRIGHTNESS_MAX_LUX, 0, BRIGHTNESS_LOWEST, BRIGHTNESS_FULL);
+	Serial.print("Lightsensor (Lux): ");
+	Serial.print(lightSensor);
+	Serial.print(" Brightness: ");
+	Serial.println(intensity);
+	return intensity;
+}
+
+void setBrightness(uint8_t value)
+{
+	LEDS.setBrightness(value);
+}
 
 void TimeToLEDArray() {
 	int Now = GetTime();
@@ -131,12 +206,37 @@ void print2Digits(byte value)
 	Serial.print(value);
 }
 
+void printSettings()
+{
+	Serial.print("[Settings read] Color Mode: ");
+	Serial.print(settings.colorMode);
+	Serial.print(" Brightness: ");
+	Serial.println(settings.brightnessMode);
+}
+
+void getOrInitializeSettings()
+{
+	EEPROM.get(EEPROM_SETTINGS_ADDR, settings);
+	if (settings.brightnessMode >= SIZE)
+	{
+		Serial.println("First run. Set initial settings.");
+		settings = INITIAL_SETTINGS;
+	}
+	persistSettings();
+}
+
+void persistSettings()
+{
+	EEPROM.put(EEPROM_SETTINGS_ADDR, settings);
+}
+
 void TimeAdjust() {
 	int btnHours = digitalRead(BTN_HOURS_PIN);
 	int btnMinutes = digitalRead(BTN_MINUTES_PIN);
 	int btnColorMode = digitalRead(BTN_COLOR_PIN);
-
-	if (btnHours == LOW || btnMinutes == LOW || btnColorMode == LOW)
+	int btnBrightness = digitalRead(BTN_BRIGHTNESS_PIN);
+	
+	if (btnHours == LOW || btnMinutes == LOW || btnColorMode == LOW || btnBrightness == LOW)
 	{
 		delay(500);
 		tmElements_t Now;
@@ -152,16 +252,37 @@ void TimeAdjust() {
 		}
 		else if (btnColorMode == LOW)
 		{
-			nextPattern();
+			settings.colorMode = ++settings.colorMode;
+			persistSettings();
+			printSettings();
+			//nextPattern();
+		}
+		else if (btnBrightness == LOW)
+		{
+			changeBrightnessMode();
 		};
 
 		printTime(Now);
 		RTC.write(Now);
 	}
 }
-void loop()  // Main loop
+void loop()
 {
-	BrightnessCheck(); // Check brightness
+	EVERY_N_MILLISECONDS(200)
+	{
+		if (settings.brightnessMode == SENSOR_DRIVEN)
+		{
+			uint8_t sensorValue = BrightnessValueBySensor();
+			Serial.print("Br: "); Serial.print(brightness); Serial.print(" Sensor: "); Serial.println(sensorValue);
+			if (brightness != sensorValue)
+			{
+				Serial.println("Value changed.");
+				brightness = sensorValue;
+				setBrightness(brightness);
+			}
+		}
+	}
+
 	TimeAdjust(); // Check to se if time is geting modified
 	TimeToLEDArray(); // Get leds array with required configuration
 	// send the 'leds' array out to the actual LED strip
@@ -171,5 +292,4 @@ void loop()  // Main loop
 	gHue++;
 	// insert a delay to keep the framerate modest
 	FastLED.delay(1000 / FRAMES_PER_SECOND);
-	//EVERY_N_MILLISECONDS(20) { gHue++; } // slowly cycle the "base color" through the rainbow
 }
