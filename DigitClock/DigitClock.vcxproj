@@ -120,7 +120,11 @@
     <None Include="DigitClock.ino" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ardprintf.h" />
     <ClInclude Include="__vm\.DigitClock.vsarduino.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="ardprintf.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

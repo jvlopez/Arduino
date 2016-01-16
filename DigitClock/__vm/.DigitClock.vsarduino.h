@@ -86,4 +86,6 @@ extern "C" void __cxa_pure_virtual() {;}
 #define portInputRegister(P)
 #define portModeRegister(P)
 #include <..\DigitClock\DigitClock.ino>
+#include <..\DigitClock\ardprintf.cpp>
+#include <..\DigitClock\ardprintf.h>
 #endif

@@ -2,12 +2,10 @@
 #include <Time.h>
 #include <Wire.h>
 #include <EEPROM.h>
-#include "FastLED.h"
 #include <BH1750.h>
-#include <stdarg.h>
-#include <Arduino.h>
+#include <FastLED.h>
+#include "ardprintf.h"
 
-#define ARDBUFFER 16
 #define NUM_LEDS 30 // Number of LED controllers (3 LEDS per controller)
 #define COLOR_ORDER RGB  // Define LED strip color order
 #define BTN_HOURS_PIN 2
@@ -24,7 +22,7 @@
 #define BRIGHTNESS_MEDIUM 128
 #define BRIGHTNESS_BRIGHT 192
 #define BRIGHTNESS_FULL 255
-#define BLACK 0x000000
+#define BLACK CHSV(0, 0, 255)
 #define FRAMES_PER_SECOND  24
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 #define INITIAL_SETTINGS { FULL, 0, CHSV(0, 255, 255)}
@@ -81,54 +79,6 @@ void setup(){
 	pinMode(BTN_COLOR_PIN, INPUT_PULLUP);
 	pinMode(BTN_HOURS_PIN, INPUT_PULLUP);
 	pinMode(BTN_MINUTES_PIN, INPUT_PULLUP);
-}
-
-int ardprintf(char *str, ...)
-{
-	int i, count = 0, j = 0, flag = 0;
-	char temp[ARDBUFFER + 1];
-	for (i = 0; str[i] != '\0'; i++)  if (str[i] == '%')  count++;
-
-	va_list argv;
-	va_start(argv, count);
-	for (i = 0, j = 0; str[i] != '\0'; i++)
-	{
-		if (str[i] == '%')
-		{
-			temp[j] = '\0';
-			Serial.print(temp);
-			j = 0;
-			temp[0] = '\0';
-
-			switch (str[++i])
-			{
-			case 'd': Serial.print(va_arg(argv, int));
-				break;
-			case 'l': Serial.print(va_arg(argv, long));
-				break;
-			case 'f': Serial.print(va_arg(argv, double));
-				break;
-			case 'c': Serial.print((char)va_arg(argv, int));
-				break;
-			case 's': Serial.print(va_arg(argv, char *));
-				break;
-			default:;
-			};
-		}
-		else
-		{
-			temp[j] = str[i];
-			j = (j + 1) % ARDBUFFER;
-			if (j == 0)
-			{
-				temp[ARDBUFFER] = '\0';
-				Serial.print(temp);
-				temp[0] = '\0';
-			}
-		}
-	};
-	Serial.println();
-	return count + 1;
 }
 
 void changeBrightnessMode()
@@ -261,7 +211,6 @@ void setBrightness(uint8_t value)
 void TimeToLEDArray() {
 	int Now = GetTime();
 	int cursor = NUM_LEDS;
-	//CHSV color = CHSV(gHue, 255, 255);
 
 	dotIsVisible ? (leds[14] = color) : (leds[14] = BLACK);
 	dotIsVisible ? (leds[15] = color) : (leds[15] = BLACK);
