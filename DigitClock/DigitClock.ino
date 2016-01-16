@@ -6,6 +6,18 @@
 #include <FastLED.h>
 #include "ardprintf.h"
 
+#define DEBUG_OVER_SERIAL
+#ifdef DEBUG_OVER_SERIAL
+	#include "ardprintf.h"
+	#define DEBUG_OPEN_SERIAL(x) Serial.begin(x)
+	#define DEBUG_PRINT_LINE(x) Serial.println(x)
+	#define DEBUG_PRINT_FORMATTED_LINE(x, ...) ardprintf(x, __VA_ARGS__)
+#else
+	#define DEBUG_OPEN_SERIAL(x)
+	#define DEBUG_PRINT_LINE(x)
+	#define DEBUG_PRINT_FORMATTED_LINE(x, ...)
+#endif
+
 #define NUM_LEDS 30 // Number of LED controllers (3 LEDS per controller)
 #define COLOR_ORDER RGB  // Define LED strip color order
 #define BTN_HOURS_PIN 2
@@ -22,7 +34,7 @@
 #define BRIGHTNESS_MEDIUM 128
 #define BRIGHTNESS_BRIGHT 192
 #define BRIGHTNESS_FULL 255
-#define BLACK CHSV(0, 0, 255)
+#define BLACK CHSV(0, 255, 0)
 #define FRAMES_PER_SECOND  24
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 #define INITIAL_SETTINGS { FULL, 0, CHSV(0, 255, 255)}
@@ -68,7 +80,7 @@ typedef void(*SimplePatternList[])();
 SimplePatternList colorPatternList = { colorWheel, keepColor, red, green, blue, white };
 
 void setup(){
-	Serial.begin(9600);
+	DEBUG_OPEN_SERIAL(9600);
 	Wire.begin();
 	lightMeter.begin(BH1750_CONTINUOUS_LOW_RES_MODE);
 	getOrInitializeSettings();
@@ -120,7 +132,7 @@ void AdjustBrightnessToLightIntensity()
 	uint8_t sensorValue = BrightnessValueBySensor();
 	if (brightness != sensorValue)
 	{
-		ardprintf("Brightness changed %d --> %d", brightness, sensorValue);
+		DEBUG_PRINT_FORMATTED_LINE("Brightness changed %d --> %d", brightness, sensorValue);
 		brightness = sensorValue;
 		setBrightness(brightness);
 	}
@@ -233,7 +245,7 @@ void printTime(tmElements_t time)
 	if (time.Second != timeChanged)
 	{
 		timeChanged = time.Second;
-		ardprintf("Time: %d:%d:%d", time.Hour, time.Minute, time.Second);
+		DEBUG_PRINT_FORMATTED_LINE("Time: %d:%d:%d", time.Hour, time.Minute, time.Second);
 	}
 }
 
@@ -242,7 +254,7 @@ void getOrInitializeSettings()
 	EEPROM.get(EEPROM_SETTINGS_ADDR, settings);
 	if (settings.colorPattern >= ARRAY_SIZE(colorPatternList))
 	{
-		Serial.println("First run. Set initial settings.");
+		DEBUG_PRINT_LINE("First run. Set initial settings.");
 		settings = INITIAL_SETTINGS;
 		persistSettings();
 	}
@@ -257,7 +269,7 @@ void persistSettings()
 
 void printSettings()
 {
-	ardprintf("[Settings] Color Mode: %d HSV: [%d,%d,%d], Brightness Mode: %d", settings.colorPattern, settings.color.hue, settings.color.saturation, settings.color.value, settings.brightnessMode);
+	DEBUG_PRINT_FORMATTED_LINE("[Settings] Color Mode: %d HSV: [%d,%d,%d], Brightness Mode: %d", settings.colorPattern, settings.color.hue, settings.color.saturation, settings.color.value, settings.brightnessMode);
 }
 
 void loop()
