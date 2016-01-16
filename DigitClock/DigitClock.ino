@@ -4,7 +4,10 @@
 #include <EEPROM.h>
 #include "FastLED.h"
 #include <BH1750.h>
+#include <stdarg.h>
+#include <Arduino.h>
 
+#define ARDBUFFER 16
 #define NUM_LEDS 30 // Number of LED controllers (3 LEDS per controller)
 #define COLOR_ORDER RGB  // Define LED strip color order
 #define BTN_HOURS_PIN 2
@@ -22,7 +25,6 @@
 #define BRIGHTNESS_BRIGHT 192
 #define BRIGHTNESS_FULL 255
 #define BLACK 0x000000
-//#define BLACK CHSV(0, 0, 0)
 #define FRAMES_PER_SECOND  24
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 #define INITIAL_SETTINGS { FULL, 0, CHSV(0, 255, 255)}
@@ -81,6 +83,54 @@ void setup(){
 	pinMode(BTN_MINUTES_PIN, INPUT_PULLUP);
 }
 
+int ardprintf(char *str, ...)
+{
+	int i, count = 0, j = 0, flag = 0;
+	char temp[ARDBUFFER + 1];
+	for (i = 0; str[i] != '\0'; i++)  if (str[i] == '%')  count++;
+
+	va_list argv;
+	va_start(argv, count);
+	for (i = 0, j = 0; str[i] != '\0'; i++)
+	{
+		if (str[i] == '%')
+		{
+			temp[j] = '\0';
+			Serial.print(temp);
+			j = 0;
+			temp[0] = '\0';
+
+			switch (str[++i])
+			{
+			case 'd': Serial.print(va_arg(argv, int));
+				break;
+			case 'l': Serial.print(va_arg(argv, long));
+				break;
+			case 'f': Serial.print(va_arg(argv, double));
+				break;
+			case 'c': Serial.print((char)va_arg(argv, int));
+				break;
+			case 's': Serial.print(va_arg(argv, char *));
+				break;
+			default:;
+			};
+		}
+		else
+		{
+			temp[j] = str[i];
+			j = (j + 1) % ARDBUFFER;
+			if (j == 0)
+			{
+				temp[ARDBUFFER] = '\0';
+				Serial.print(temp);
+				temp[0] = '\0';
+			}
+		}
+	};
+	Serial.println();
+	return count + 1;
+}
+
 void changeBrightnessMode()
 {
 	settings.brightnessMode = (settings.brightnessMode + 1) % SIZE;
@@ -120,10 +170,7 @@ void AdjustBrightnessToLightIntensity()
 	uint8_t sensorValue = BrightnessValueBySensor();
 	if (brightness != sensorValue)
 	{
-		Serial.print("Brightness changed from ");
-		Serial.print(brightness);
-		Serial.print(" to ");
-		Serial.println(sensorValue);
+		ardprintf("Brightness changed %d --> %d", brightness, sensorValue);
 		brightness = sensorValue;
 		setBrightness(brightness);
 	}
@@ -237,37 +284,8 @@ void printTime(tmElements_t time)
 	if (time.Second != timeChanged)
 	{
 		timeChanged = time.Second;
-		Serial.print("Time: ");
-		print2Digits(time.Hour);
-		Serial.print(":");
-		print2Digits(time.Minute);
-		Serial.print(":");
-		print2Digits(time.Second);
-		Serial.println("");
+		ardprintf("Time: %d:%d:%d", time.Hour, time.Minute, time.Second);
 	}
-}
-
-void print2Digits(byte value)
-{
-	if (value < 10)
-	{
-		Serial.print("0");
-	}
-	Serial.print(value);
-}
-
-void printSettings()
-{
-	Serial.print("[Settings] Color Mode: ");
-	Serial.print(settings.colorPattern);
-	Serial.print(" Color HSV: [");
-	Serial.print(settings.color.hue);
-	Serial.print(",");
-	Serial.print(settings.color.saturation);
-	Serial.print(",");
-	Serial.print(settings.color.value);
-	Serial.print("] Brightness: ");
-	Serial.println(settings.brightnessMode);
 }
 
 void getOrInitializeSettings()
@@ -286,6 +304,11 @@ void persistSettings()
 {
 	EEPROM.put(EEPROM_SETTINGS_ADDR, settings);
 	printSettings();
+}
+
+void printSettings()
+{
+	ardprintf("[Settings] Color Mode: %d HSV: [%d,%d,%d], Brightness Mode: %d", settings.colorPattern, settings.color.hue, settings.color.saturation, settings.color.value, settings.brightnessMode);
 }
 
 void loop()
