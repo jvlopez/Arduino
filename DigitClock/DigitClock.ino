@@ -22,9 +22,10 @@
 #define BRIGHTNESS_BRIGHT 192
 #define BRIGHTNESS_FULL 255
 #define BLACK 0x000000
+//#define BLACK CHSV(0, 0, 0)
 #define FRAMES_PER_SECOND  24
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
-#define INITIAL_SETTINGS { FULL, 0}
+#define INITIAL_SETTINGS { FULL, 0, CHSV(0, 255, 255)}
 
 CRGB leds[NUM_LEDS]; // Define the array of the LEDs strip
 byte digits[10][7] = { {0,1,1,1,1,1,1},  // Digit 0
@@ -38,15 +39,11 @@ byte digits[10][7] = { {0,1,1,1,1,1,1},  // Digit 0
 					 {1,1,1,1,1,1,1},   // Digit 8
 					 {1,1,1,1,0,1,1} };  // Digit 9 | 2D Array for numbers on 7 segment
 uint8_t digitOffset[4] = { 23, 16, 7, 0 };
-bool dotIsVisible = true;
-int timeChanged = 0;
-uint8_t brightness = 0;
-uint8_t gHue = 0;
-BH1750 lightMeter;
 
 struct Settings {
 	uint8_t brightnessMode;
-	uint8_t colorMode;
+	uint8_t colorPattern;
+	CHSV color;
 };
 
 enum BrightnessMode {
@@ -60,18 +57,22 @@ enum BrightnessMode {
 };
 
 Settings settings = INITIAL_SETTINGS;
+bool dotIsVisible = true;
+int timeChanged = 0;
+uint8_t brightness = 0;
+CHSV color = settings.color;
+BH1750 lightMeter;
 
-// List of patterns to cycle through.  Each is defined as a separate function below.
+// List of patterns to cycle through. Each is defined as a separate function below.
 typedef void(*SimplePatternList[])();
-SimplePatternList gPatterns = { rainbow };
-uint8_t gCurrentPatternNumber = 0; // Index number of which pattern is current
+SimplePatternList colorPatternList = { colorWheel, keepColor, red, green, blue, white };
 
 void setup(){
 	Serial.begin(9600);
 	Wire.begin();
 	lightMeter.begin(BH1750_CONTINUOUS_LOW_RES_MODE);
 	getOrInitializeSettings();
-	printSettings();
+	color = settings.color;
 	setBrightness(BrightnessModeToValue(settings.brightnessMode));
 	LEDS.addLeds<WS2811, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);; // Set LED strip type
 	pinMode(BTN_BRIGHTNESS_PIN, INPUT_PULLUP);
@@ -80,26 +81,19 @@ void setup(){
 	pinMode(BTN_MINUTES_PIN, INPUT_PULLUP);
 }
 
-void nextPattern()
-{
-	Serial.println("Next pattern");
-	gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE(gPatterns);
-}
-
 void changeBrightnessMode()
 {
 	settings.brightnessMode = (settings.brightnessMode + 1) % SIZE;
 	persistSettings();
-	printSettings();
 	setBrightness(BrightnessModeToValue(settings.brightnessMode));
 }
 
 void changeColorMode()
 {
-	settings.colorMode = ++settings.colorMode;
+	settings.colorPattern = (settings.colorPattern + 1) % ARRAY_SIZE(colorPatternList);
+	colorPatternList[settings.colorPattern]();
+	settings.color = color;
 	persistSettings();
-	printSettings();
-	//nextPattern();
 }
 
 uint8_t BrightnessModeToValue(uint8_t brightnessMode)
@@ -167,10 +161,32 @@ void HandleButtons()
 	}
 }
 
-void rainbow()
+void keepColor() { }
+
+void colorWheel()
 {
-	fill_rainbow(leds, NUM_LEDS, gHue, 7);
+	color = CHSV(++color.hue, 255, 255);
 }
+
+void red()
+{
+	color = CHSV(0, 255, 255);
+}
+
+void green()
+{
+	color = CHSV(96, 255, 255);
+}
+
+void blue()
+{
+	color = CHSV(160, 255, 255);
+}
+void white()
+{
+	color = CHSV(color.hue, 0, 255);
+}
+
 
 int GetTime() {
 	tmElements_t Now;
@@ -182,7 +198,6 @@ int GetTime() {
 
 uint8_t BrightnessValueBySensor()
 {
-	// TODO: Make a intelligent function here.
 	uint16_t lightSensor = lightMeter.readLightLevel();
 	if (lightSensor > BRIGHTNESS_MAX_LUX)
 	{
@@ -199,7 +214,7 @@ void setBrightness(uint8_t value)
 void TimeToLEDArray() {
 	int Now = GetTime();
 	int cursor = NUM_LEDS;
-	CHSV color = CHSV(gHue, 255, 255);
+	//CHSV color = CHSV(gHue, 255, 255);
 
 	dotIsVisible ? (leds[14] = color) : (leds[14] = BLACK);
 	dotIsVisible ? (leds[15] = color) : (leds[15] = BLACK);
@@ -243,26 +258,34 @@ void print2Digits(byte value)
 
 void printSettings()
 {
-	Serial.print("[Settings read] Color Mode: ");
-	Serial.print(settings.colorMode);
-	Serial.print(" Brightness: ");
+	Serial.print("[Settings] Color Mode: ");
+	Serial.print(settings.colorPattern);
+	Serial.print(" Color HSV: [");
+	Serial.print(settings.color.hue);
+	Serial.print(",");
+	Serial.print(settings.color.saturation);
+	Serial.print(",");
+	Serial.print(settings.color.value);
+	Serial.print("] Brightness: ");
 	Serial.println(settings.brightnessMode);
 }
 
 void getOrInitializeSettings()
 {
 	EEPROM.get(EEPROM_SETTINGS_ADDR, settings);
-	if (settings.brightnessMode >= SIZE)
+	if (settings.colorPattern >= ARRAY_SIZE(colorPatternList))
 	{
 		Serial.println("First run. Set initial settings.");
 		settings = INITIAL_SETTINGS;
+		persistSettings();
 	}
-	persistSettings();
+	printSettings();
 }
 
 void persistSettings()
 {
 	EEPROM.put(EEPROM_SETTINGS_ADDR, settings);
+	printSettings();
 }
 
 void loop()
@@ -276,12 +299,11 @@ void loop()
 	}
 	
 	HandleButtons();
-	TimeToLEDArray();
 	// Call the current pattern function once, updating the 'leds' array
-	//gPatterns[gCurrentPatternNumber]();
+	colorPatternList[settings.colorPattern]();
+	TimeToLEDArray();
 	// send the 'leds' array out to the actual LED strip
 	FastLED.show();
-	gHue++;
 	// insert a delay to keep the framerate modest
 	FastLED.delay(1000 / FRAMES_PER_SECOND);
 }
