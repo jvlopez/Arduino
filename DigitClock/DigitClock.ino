@@ -59,6 +59,8 @@ enum ColorPatterns {
 	PATTERNS_SIZE
 };
 
+enum Letters { A, F, G, H, I, L, O, T, U, _, LETTERS_SIZE };
+
 Settings settings = INITIAL_SETTINGS;
 bool dotIsVisible = true;
 tmElements_t previousTime, currentTime;
@@ -78,6 +80,24 @@ byte digits[10][7] = {	{0,1,1,1,1,1,1},   // Digit 0
 						{0,1,1,0,0,0,1},   // Digit 7
 						{1,1,1,1,1,1,1},   // Digit 8
 						{1,1,1,1,0,1,1} }; // Digit 9 | 2D Array for numbers on 7 segment
+byte letters[LETTERS_SIZE][7] = {{1,1,1,1,1,0,1},   // Digit A
+						{1,0,1,1,1,0,0},   // Digit F
+						{1,0,1,1,1,1,1},   // Digit G
+						{1,1,0,1,1,0,1},   // Digit H
+						{0,0,0,1,1,0,0},   // Digit I
+						{0,0,0,1,1,1,0},   // Digit L
+						{0,1,1,1,1,1,1},   // Digit O
+						{1,0,0,1,1,1,0},   // Digit t
+						{0,1,0,1,1,1,1},   // Digit U 
+						{0,0,0,0,0,0,0} }; // Digit shows nothing | 2D Array for letters on 7 segment
+
+byte luminosityText[SIZE][4] = {{A,U,T,O},
+								{L,O,_,_},
+								{H,A,L,F},
+								{H,I,G,H},
+								{F,U,L,L},
+								{O,F,F,_}};
+
 uint8_t digitOffset[] = { 23, 16, 7, 0 };
 
 void setup(){
@@ -121,11 +141,12 @@ void createLuminosityDefinition()
 	luminosityValues[BRIGHT] = 192;
 	luminosityValues[FULL] = 255;
 	luminosityValues[OFF] = 0;
-}
+}  
 
 void changeLuminosityMode()
 {
 	settings.luminosityMode = (settings.luminosityMode + 1) % SIZE;
+	showLuminosityModeText();
 	persistSettings();
 }
 
@@ -146,6 +167,25 @@ void updateLedLuminosity()
 		currentLuminosity = luminosity;
 		LEDS.setBrightness(currentLuminosity);
 	}
+}
+
+uint8_t * showLuminosityModeText()
+{
+	leds[14] = leds[15] = BLACK;
+	
+	for (int i = 0; i < 4; i++)
+	{
+		byte letter = luminosityText[settings.luminosityMode][3-i];
+		int cursor = digitOffset[i];
+		for (int k = 0; k <= 6; k++) {
+			if (letters[letter][k] == 1) { leds[cursor] = settings.color; }
+			else if (letters[letter][k] == 0) { leds[cursor] = BLACK; };
+			cursor++;
+		};
+	}
+	LEDS.setBrightness(LED_HIGHEST_LUMINOSITY);
+	FastLED.show();
+	delay(1000);
 }
 
 void handleButtonInteraction()
