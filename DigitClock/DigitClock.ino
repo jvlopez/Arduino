@@ -61,7 +61,7 @@ enum ColorPatterns {
 
 Settings settings = INITIAL_SETTINGS;
 bool dotIsVisible = true;
-int timeChanged = 0;
+tmElements_t previousTime, currentTime;
 uint8_t luminosityValues[SIZE];
 uint8_t currentLuminosity = 0;
 BH1750 lightMeter;
@@ -179,14 +179,6 @@ void handleButtonInteraction()
 	}
 }
 
-int getTime() {
-	tmElements_t Now;
-	RTC.read(Now);
-	printTime(Now);
-	dotIsVisible = (Now.Second % 2 == 0);
-	return (Now.Hour * 100 + Now.Minute);
-};
-
 uint8_t luminosityValueBySensor()
 {
 	uint16_t lightSensor = lightMeter.readLightLevel();
@@ -196,11 +188,10 @@ uint8_t luminosityValueBySensor()
 
 void updateLedDigits() 
 {
-	// Update digit color according to current color pattern
 	settings.color = getColor(colorPatterns[settings.colorPattern]);
-	int Now = getTime();
+	int Now = (currentTime.Hour * 100 + currentTime.Minute);
 	int cursor = NUM_LEDS;
-
+	dotIsVisible = (currentTime.Second % 2 == 0);
 	dotIsVisible ? (leds[14] = leds[15] = settings.color) : (leds[14] = leds[15] = BLACK);
 
 	for (int i = 0; i < 4; i++)
@@ -216,12 +207,12 @@ void updateLedDigits()
 	}
 };
 
-void printTime(tmElements_t time)
+void printTime()
 {
-	if (time.Second != timeChanged)
+	if (abs(currentTime.Second - previousTime.Second) > 0)
 	{
-		timeChanged = time.Second;
-		DEBUG_PRINT_FORMATTED_LINE("Time: %d:%d:%d", time.Hour, time.Minute, time.Second);
+		previousTime = currentTime;
+		DEBUG_PRINT_FORMATTED_LINE("Time: %d:%d:%d", currentTime.Hour, currentTime.Minute, currentTime.Second);
 	}
 }
 
@@ -255,6 +246,8 @@ void loop()
 		updateLedLuminosity();
 	}
 	handleButtonInteraction();
+	RTC.read(currentTime);
+	printTime();
 	// Update the color array of the LEDs to represent the current time & color pattern
 	updateLedDigits();
 	FastLED.show();
