@@ -19,10 +19,9 @@
 
 #define NUM_LEDS 30 // Number of LED controllers (3 LEDS per controller)
 #define COLOR_ORDER RGB  // Define LED strip color order
-#define BTN_ADD_HOUR_PRESSED(x) (x >> 3 & 1) > 0
-#define BTN_ADD_MINUTE_PRESSED(x) (x >> 2 & 1) > 0
-#define BTN_CHANGE_LUMINOSITY_PRESSED(x) (x >> 1 & 1) > 0
-#define BTN_CHANGE_COLOR_PRESSED(x) (x & 1) > 0
+#define PULLUP_PIN_ACTIVE(pin) ~digitalRead(pin) & 1
+#define PULLUP_PIN_ACTIVE_ARRAY(pin) (PULLUP_PIN_ACTIVE(pin)) << pin
+#define BTN_IS_PRESSED(pin, pinArray) (pinArray >> pin & 1) > 0
 #define BTN_HOURS_PIN 2
 #define BTN_MINUTES_PIN 3
 #define BTN_BRIGHTNESS_PIN 4
@@ -39,34 +38,31 @@
 #define INITIAL_SETTINGS { LED_HIGHEST_LUMINOSITY, 0, getColor(RED) }
 
 struct Settings {
-	uint8_t luminosityMode;
+	uint8_t luminosity;
 	uint8_t colorPattern;
 	CHSV color;
 };
 
-struct SymbolSegments {
+struct DisplaySymbol {
 	byte segments[7];
-	char representation;
+	char symbol;
 };
 
-struct LuminositySettings {
-	byte luminosityValue;
-	byte representation[4];
+struct DisplayContent {
+	byte symbols[4];
+	bool showDots;
 };
 
-enum ColorPatterns {
-	DYNAMIC,
-	HOLD,
-	RED,
-	GREEN,
-	BLUE,
-	WHITE,
-	PATTERNS_SIZE
+struct LuminositySetting {
+	byte value;
+	byte text[4];
 };
+
+enum ColorPatterns { DYNAMIC, HOLD, RED, GREEN,	BLUE, WHITE, PATTERNS_SIZE };
 
 enum Letters { A = 10, F, G, H, I, L, O, T, U, _ };
 
-SymbolSegments symbols[] = { { { 0,1,1,1,1,1,1 }, '0'},
+DisplaySymbol symbols[] = { { { 0,1,1,1,1,1,1 }, '0'},
 							 { { 0,1,0,0,0,0,1 }, '1'},
 							 { { 1,1,1,0,1,1,0 }, '2'},
 							 { { 1,1,1,0,0,1,1 }, '3'},
@@ -87,7 +83,7 @@ SymbolSegments symbols[] = { { { 0,1,1,1,1,1,1 }, '0'},
 							 { { 0,1,0,1,1,1,1 }, 'U'},
 							 { { 0,0,0,0,0,0,0 }, ' '} };
 
-LuminositySettings luminositySetting[] =  { { 0,	{ A,U,T,O } },
+LuminositySetting luminositySetting[] =	  { { 0,	{ A,U,T,O } },
 											{ 64,	{ L,O,_,_ } }, 
 											{ 128,	{ H,A,L,F } }, 
 											{ 192,	{ H,I,G,H } }, 
@@ -97,6 +93,7 @@ LuminositySettings luminositySetting[] =  { { 0,	{ A,U,T,O } },
 ColorPatterns colorPatterns[] = { DYNAMIC, HOLD, RED, GREEN, BLUE, WHITE };
 uint8_t digitOffset[] = { 0, 7, 16, 23 };
 CRGB leds[NUM_LEDS]; // Define the color array of the LED strip
+DisplayContent content = { { _, _, _, _ }, false };
 Settings settings = INITIAL_SETTINGS;
 tmElements_t previousTime, currentTime;
 uint8_t currentLuminosity = 0;
@@ -136,16 +133,19 @@ CHSV getColor(uint8_t forPattern)
 
 void changeLuminosityMode()
 {
-	settings.luminosityMode = (settings.luminosityMode + 1) % ARRAY_SIZE(luminositySetting);
+	settings.luminosity = (settings.luminosity + 1) % ARRAY_SIZE(luminositySetting);
 	LEDS.setBrightness(LED_HIGHEST_LUMINOSITY);
-	updateLedDigits(luminositySetting[settings.luminosityMode].representation, false);
+	struct DisplayContent content;
+	memcpy(content.symbols, luminositySetting[settings.luminosity].text, sizeof(content.symbols));
+	content.showDots = false;
+	updateDisplayContent(content);
 	delay(1000);
 }
 
-void updateLedLuminosity()
+void adjustDisplayLuminosity()
 {
 	uint8_t luminosity;
-	settings.luminosityMode == AUTO_ADJUST ? luminosity = luminosityValueBySensor() : luminosity = luminositySetting[settings.luminosityMode].luminosityValue;
+	settings.luminosity == AUTO_ADJUST ? luminosity = luminosityValueBySensor() : luminosity = luminositySetting[settings.luminosity].value;
 	if (currentLuminosity != luminosity)
 	{
 		DEBUG_PRINT_FORMATTED_LINE("Luminosity changed %d --> %d", currentLuminosity, luminosity);
@@ -156,24 +156,24 @@ void updateLedLuminosity()
 
 void handleButtonInteraction()
 {
-	byte buttonsPressed = (~digitalRead(BTN_HOURS_PIN) << 3 | ~digitalRead(BTN_MINUTES_PIN) << 2 | ~digitalRead(BTN_BRIGHTNESS_PIN) << 1 | ~digitalRead(BTN_COLOR_PIN));
+	byte buttonsPressed = PULLUP_PIN_ACTIVE_ARRAY(BTN_HOURS_PIN) | PULLUP_PIN_ACTIVE_ARRAY(BTN_MINUTES_PIN) | PULLUP_PIN_ACTIVE_ARRAY(BTN_BRIGHTNESS_PIN) | PULLUP_PIN_ACTIVE_ARRAY(BTN_COLOR_PIN);
 	if(buttonsPressed > 0)
 	{
-		if (BTN_ADD_HOUR_PRESSED(buttonsPressed))
+		if (BTN_IS_PRESSED(BTN_HOURS_PIN, buttonsPressed))
 		{
 			currentTime.Hour = (++currentTime.Hour % 24);
 			RTC.write(currentTime);
 		}
-		else if (BTN_ADD_MINUTE_PRESSED(buttonsPressed))
+		else if (BTN_IS_PRESSED(BTN_MINUTES_PIN, buttonsPressed))
 		{
 			currentTime.Minute = (++currentTime.Minute % 60);
 			RTC.write(currentTime);
 		}
-		else if (BTN_CHANGE_LUMINOSITY_PRESSED(buttonsPressed))
+		else if (BTN_IS_PRESSED(BTN_BRIGHTNESS_PIN, buttonsPressed))
 		{
 			changeLuminosityMode();
 		}
-		else if (BTN_CHANGE_COLOR_PRESSED(buttonsPressed))
+		else if (BTN_IS_PRESSED(BTN_COLOR_PIN, buttonsPressed))
 		{
 			settings.colorPattern = (settings.colorPattern + 1) % ARRAY_SIZE(colorPatterns);
 		}
@@ -189,41 +189,40 @@ uint8_t luminosityValueBySensor()
 	return map(lightSensor, LIGHTSENSOR_HIGH_LUX, 0, LED_LOWEST_LUMINOSITY, LED_HIGHEST_LUMINOSITY);
 }
 
-void showTime() 
+void updateDisplayTime() 
 {
-	settings.color = getColor(colorPatterns[settings.colorPattern]);
 	int Now = (currentTime.Hour * 100 + currentTime.Minute);
-	byte timeDigits[4];
-	timeDigits[3] = Now % 10;
-	timeDigits[2] = (Now /= 10) % 10;
-	timeDigits[1] = (Now /= 10) % 10;
-	timeDigits[0] = (Now /= 10) % 10;
-	updateLedDigits(timeDigits, (currentTime.Second % 2 == 0));
+	struct DisplayContent content;
+	content.symbols[3] = Now % 10;
+	content.symbols[2] = (Now /= 10) % 10;
+	content.symbols[1] = (Now /= 10) % 10;
+	content.symbols[0] = (Now /= 10) % 10;
+	content.showDots = (currentTime.Second % 2 == 0);
+	updateDisplayContent(content);
 };
 
-void updateLedDigits(byte symbolsToShow[4], bool showDots)
+void updateDisplayContent(struct DisplayContent newContent)
 {
 	int cursor = NUM_LEDS;
-	leds[14] = leds[15] = showDots ? settings.color : BLACK;
-
+	settings.color = getColor(colorPatterns[settings.colorPattern]);
+	leds[14] = leds[15] = newContent.showDots ? settings.color : BLACK;
+	
 	for (int i = 0; i < 4; i++)
 	{
 		int cursor = digitOffset[i];
 		for (int k = 0; k <= 6; k++) {
-			bool segmentActive = (symbols[symbolsToShow[i]].segments[k] == 1);
+			bool segmentActive = (symbols[content.symbols[i]].segments[k] == 1);
 			leds[cursor] = segmentActive ? settings.color : BLACK;
 			cursor++;
 		};
 	}
 	FastLED.show();
-}
 
-void printTime()
-{
-	if (abs(currentTime.Second - previousTime.Second) > 0)
-	{
-		previousTime = currentTime;
-		DEBUG_PRINT_FORMATTED_LINE("Time: %d:%d:%d", currentTime.Hour, currentTime.Minute, currentTime.Second);
+	bool contentUpdated = (content.showDots != newContent.showDots) | memcmp(content.symbols, newContent.symbols, sizeof(content.symbols));
+	if (contentUpdated) {
+		content = newContent;
+		DEBUG_PRINT_FORMATTED_LINE("[Display Changed] %c%c%c%c%c", symbols[content.symbols[0]].symbol, symbols[content.symbols[1]].symbol,
+			content.showDots ? ':' : ' ', symbols[content.symbols[2]].symbol, symbols[content.symbols[3]].symbol);
 	}
 }
 
@@ -247,19 +246,17 @@ void persistSettings()
 
 void printSettings()
 {
-	DEBUG_PRINT_FORMATTED_LINE("[Settings] Color Mode: %d HSV: [%d,%d,%d], Brightness Mode: %d", settings.colorPattern, settings.color.hue, settings.color.saturation, settings.color.value, settings.luminosityMode);
+	DEBUG_PRINT_FORMATTED_LINE("[Settings] Color Mode: %d HSV: [%d,%d,%d], Brightness Mode: %d", settings.colorPattern, settings.color.hue, settings.color.saturation, settings.color.value, settings.luminosity);
 }
 
 void loop()
 {
 	EVERY_N_MILLISECONDS(200)
 	{
-		updateLedLuminosity();
+		adjustDisplayLuminosity();
 	}
 	handleButtonInteraction();
 	RTC.read(currentTime);
-	printTime();
-	// Update the color array of the LEDs to represent the current time & color pattern
-	showTime();
+	updateDisplayTime();
 	FastLED.delay(1000 / FRAMES_PER_SECOND);
 }
