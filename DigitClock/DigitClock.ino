@@ -33,7 +33,7 @@
 #define LED_LOWEST_LUMINOSITY 10
 #define LED_HIGHEST_LUMINOSITY 255
 #define BLACK CHSV(0, 255, 0)
-#define FRAMES_PER_SECOND  24
+#define FRAMES_PER_SECOND 24
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 #define INITIAL_SETTINGS { LED_HIGHEST_LUMINOSITY, 0, getColor(RED) }
 
@@ -95,7 +95,7 @@ uint8_t digitOffset[] = { 0, 7, 16, 23 };
 CRGB leds[NUM_LEDS]; // Define the color array of the LED strip
 DisplayContent content = { { _, _, _, _ }, false };
 Settings settings = INITIAL_SETTINGS;
-tmElements_t previousTime, currentTime;
+tmElements_t currentTime;
 uint8_t currentLuminosity = 0;
 BH1750 lightMeter;
 
@@ -135,9 +135,8 @@ void changeLuminosityMode()
 {
 	settings.luminosity = (settings.luminosity + 1) % ARRAY_SIZE(luminositySetting);
 	LEDS.setBrightness(LED_HIGHEST_LUMINOSITY);
-	struct DisplayContent content;
+	struct DisplayContent content = { {}, false };
 	memcpy(content.symbols, luminositySetting[settings.luminosity].text, sizeof(content.symbols));
-	content.showDots = false;
 	updateDisplayContent(content);
 	delay(1000);
 }
@@ -211,7 +210,7 @@ void updateDisplayContent(struct DisplayContent newContent)
 	{
 		int cursor = digitOffset[i];
 		for (int k = 0; k <= 6; k++) {
-			bool segmentActive = (symbols[content.symbols[i]].segments[k] == 1);
+			bool segmentActive = (symbols[newContent.symbols[i]].segments[k] == 1);
 			leds[cursor] = segmentActive ? settings.color : BLACK;
 			cursor++;
 		};
@@ -231,7 +230,7 @@ void getSettings()
 	EEPROM.get(EEPROM_SETTINGS_ADDR, settings);
 	if (settings.colorPattern >= ARRAY_SIZE(colorPatterns))
 	{
-		DEBUG_PRINT_LINE("First run. Set initial settings.");
+		DEBUG_PRINT_LINE("No (or corrupt) settings found in EEPROM. Storing initial settings.");
 		settings = INITIAL_SETTINGS;
 		persistSettings();
 	}
