@@ -4,19 +4,9 @@
 #include <EEPROM.h>
 #include <BH1750.h>
 #include <FastLED.h>
+#include "ardprintf.h"
 
-#define DEBUG_OVER_SERIAL
-#ifdef DEBUG_OVER_SERIAL
-	#include "ardprintf.h"
-	#define DEBUG_OPEN_SERIAL(x) Serial.begin(x)
-	#define DEBUG_PRINT_LINE(x) Serial.println(x)
-	#define DEBUG_PRINT_FORMATTED_LINE(x, ...) ardprintf(x, __VA_ARGS__)
-#else
-	#define DEBUG_OPEN_SERIAL(x)
-	#define DEBUG_PRINT_LINE(x)
-	#define DEBUG_PRINT_FORMATTED_LINE(x, ...)
-#endif
-
+#define DIAGNOSTIC_MODE_PRINTF(x, ...) if(diagnosticMode) { ardprintf(x, __VA_ARGS__); }
 #define NUM_LEDS 30 // Number of LED controllers (3 LEDS per controller)
 #define COLOR_ORDER RGB  // Define LED strip color order
 #define PULLUP_PIN_ACTIVE(pin) ~digitalRead(pin) & 1
@@ -26,6 +16,8 @@
 #define BTN_MINUTES_PIN 3
 #define BTN_BRIGHTNESS_PIN 4
 #define BTN_COLOR_PIN 5
+#define PIN_ACTIVE(x) PULLUP_PIN_ACTIVE_ARRAY(x)
+#define PRESSED_BUTTONS_ARRAY (PIN_ACTIVE(BTN_HOURS_PIN) | PIN_ACTIVE(BTN_MINUTES_PIN) | PIN_ACTIVE(BTN_BRIGHTNESS_PIN) | PIN_ACTIVE(BTN_COLOR_PIN))
 #define LED_DATA_PIN 6
 #define EEPROM_SETTINGS_ADDR 0
 #define AUTO_ADJUST 0
@@ -63,25 +55,25 @@ enum ColorPatterns { DYNAMIC, HOLD, RED, GREEN,	BLUE, WHITE, PATTERNS_SIZE };
 enum Letters { A = 10, F, G, H, I, L, O, T, U, _ };
 
 DisplaySymbol symbols[] = { { { 0,1,1,1,1,1,1 }, '0'},
-							 { { 0,1,0,0,0,0,1 }, '1'},
-							 { { 1,1,1,0,1,1,0 }, '2'},
-							 { { 1,1,1,0,0,1,1 }, '3'},
-							 { { 1,1,0,1,0,0,1 }, '4'},
-							 { { 1,0,1,1,0,1,1 }, '5'},
-							 { { 1,0,1,1,1,1,1 }, '6'},
-							 { { 0,1,1,0,0,0,1 }, '7'},
-							 { { 1,1,1,1,1,1,1 }, '8'},
-							 { { 1,1,1,1,0,1,1 }, '9'},
-							 { { 1,1,1,1,1,0,1 }, 'A'},
-							 { { 1,0,1,1,1,0,0 }, 'F'},
-							 { { 1,0,1,1,1,1,1 }, 'G'},
-							 { { 1,1,0,1,1,0,1 }, 'H'},
-							 { { 0,0,0,1,1,0,0 }, 'I'},
-							 { { 0,0,0,1,1,1,0 }, 'L'},
-							 { { 0,1,1,1,1,1,1 }, 'O'},
-							 { { 1,0,0,1,1,1,0 }, 't'},
-							 { { 0,1,0,1,1,1,1 }, 'U'},
-							 { { 0,0,0,0,0,0,0 }, ' '} };
+							{ { 0,1,0,0,0,0,1 }, '1'},
+							{ { 1,1,1,0,1,1,0 }, '2'},
+							{ { 1,1,1,0,0,1,1 }, '3'},
+							{ { 1,1,0,1,0,0,1 }, '4'},
+							{ { 1,0,1,1,0,1,1 }, '5'},
+							{ { 1,0,1,1,1,1,1 }, '6'},
+							{ { 0,1,1,0,0,0,1 }, '7'},
+							{ { 1,1,1,1,1,1,1 }, '8'},
+							{ { 1,1,1,1,0,1,1 }, '9'},
+							{ { 1,1,1,1,1,0,1 }, 'A'},
+							{ { 1,0,1,1,1,0,0 }, 'F'},
+							{ { 1,0,1,1,1,1,1 }, 'G'},
+							{ { 1,1,0,1,1,0,1 }, 'H'},
+							{ { 0,0,0,1,1,0,0 }, 'I'},
+							{ { 0,0,0,1,1,1,0 }, 'L'},
+							{ { 0,1,1,1,1,1,1 }, 'O'},
+							{ { 1,0,0,1,1,1,0 }, 't'},
+							{ { 0,1,0,1,1,1,1 }, 'U'},
+							{ { 0,0,0,0,0,0,0 }, ' '} };
 
 LuminositySetting luminositySetting[] =	  { { 0,	{ A,U,T,O } },
 											{ 64,	{ L,O,_,_ } }, 
@@ -96,19 +88,30 @@ CRGB leds[NUM_LEDS]; // Define the color array of the LED strip
 DisplayContent content = { { _, _, _, _ }, false };
 Settings settings = INITIAL_SETTINGS;
 tmElements_t currentTime;
-uint8_t currentLuminosity = 0;
+uint8_t currentLuminosity;
 BH1750 lightMeter;
+bool diagnosticMode;
 
 void setup(){
-	DEBUG_OPEN_SERIAL(9600);
 	Wire.begin();
 	lightMeter.begin(BH1750_CONTINUOUS_LOW_RES_MODE);
-	getSettings();
 	LEDS.addLeds<WS2811, LED_DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
 	pinMode(BTN_BRIGHTNESS_PIN, INPUT_PULLUP);
 	pinMode(BTN_COLOR_PIN, INPUT_PULLUP);
 	pinMode(BTN_HOURS_PIN, INPUT_PULLUP);
 	pinMode(BTN_MINUTES_PIN, INPUT_PULLUP);
+	checkForDiagnosticMode();
+	getSettings();
+}
+
+void checkForDiagnosticMode()
+{
+	diagnosticMode = PRESSED_BUTTONS_ARRAY ? true : false;
+	if (diagnosticMode)
+	{
+		Serial.begin(9600);
+		DIAGNOSTIC_MODE_PRINTF("[DIAGNOSTIC MODE ENABLED] Button was pressed during startup. LEDS: %d", NUM_LEDS);
+	}
 }
 
 CHSV getColor(uint8_t forPattern)
@@ -147,7 +150,7 @@ void adjustDisplayLuminosity()
 	settings.luminosity == AUTO_ADJUST ? luminosity = luminosityValueBySensor() : luminosity = luminositySetting[settings.luminosity].value;
 	if (currentLuminosity != luminosity)
 	{
-		DEBUG_PRINT_FORMATTED_LINE("Luminosity changed %d --> %d", currentLuminosity, luminosity);
+		DIAGNOSTIC_MODE_PRINTF("Luminosity changed %d --> %d", currentLuminosity, luminosity);
 		currentLuminosity = luminosity;
 		LEDS.setBrightness(currentLuminosity);
 	}
@@ -155,8 +158,8 @@ void adjustDisplayLuminosity()
 
 void handleButtonInteraction()
 {
-	byte buttonsPressed = PULLUP_PIN_ACTIVE_ARRAY(BTN_HOURS_PIN) | PULLUP_PIN_ACTIVE_ARRAY(BTN_MINUTES_PIN) | PULLUP_PIN_ACTIVE_ARRAY(BTN_BRIGHTNESS_PIN) | PULLUP_PIN_ACTIVE_ARRAY(BTN_COLOR_PIN);
-	if(buttonsPressed > 0)
+	byte buttonsPressed = PRESSED_BUTTONS_ARRAY;
+	if(buttonsPressed)
 	{
 		if (BTN_IS_PRESSED(BTN_HOURS_PIN, buttonsPressed))
 		{
@@ -220,7 +223,7 @@ void updateDisplayContent(struct DisplayContent newContent)
 	bool contentUpdated = (content.showDots != newContent.showDots) | memcmp(content.symbols, newContent.symbols, sizeof(content.symbols));
 	if (contentUpdated) {
 		content = newContent;
-		DEBUG_PRINT_FORMATTED_LINE("[Display Changed] %c%c%c%c%c", symbols[content.symbols[0]].symbol, symbols[content.symbols[1]].symbol,
+		DIAGNOSTIC_MODE_PRINTF("[Display Changed] %c%c%c%c%c", symbols[content.symbols[0]].symbol, symbols[content.symbols[1]].symbol,
 			content.showDots ? ':' : ' ', symbols[content.symbols[2]].symbol, symbols[content.symbols[3]].symbol);
 	}
 }
@@ -230,7 +233,7 @@ void getSettings()
 	EEPROM.get(EEPROM_SETTINGS_ADDR, settings);
 	if (settings.colorPattern >= ARRAY_SIZE(colorPatterns))
 	{
-		DEBUG_PRINT_LINE("No (or corrupt) settings found in EEPROM. Storing initial settings.");
+		DIAGNOSTIC_MODE_PRINTF("No (or corrupt) settings found (EEPROM addr %d). Storing initial settings.", EEPROM_SETTINGS_ADDR);
 		settings = INITIAL_SETTINGS;
 		persistSettings();
 	}
@@ -245,7 +248,7 @@ void persistSettings()
 
 void printSettings()
 {
-	DEBUG_PRINT_FORMATTED_LINE("[Settings] Color Mode: %d HSV: [%d,%d,%d], Brightness Mode: %d", settings.colorPattern, settings.color.hue, settings.color.saturation, settings.color.value, settings.luminosity);
+	DIAGNOSTIC_MODE_PRINTF("[Settings] Color Mode: %d HSV: [%d,%d,%d], Brightness Mode: %d", settings.colorPattern, settings.color.hue, settings.color.saturation, settings.color.value, settings.luminosity);
 }
 
 void loop()
