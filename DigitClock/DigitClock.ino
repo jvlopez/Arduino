@@ -4,6 +4,7 @@
 #include <EEPROM.h>
 #include <BH1750.h>
 #include <FastLED.h>
+#include <SI7021.h>
 #include "ardprintf.h"
 
 #define DIAGNOSTIC_MODE_PRINTF(x, ...) if(diagnosticMode) { ardprintf(x, __VA_ARGS__); }
@@ -50,9 +51,15 @@ struct LuminositySetting {
 	byte text[4];
 };
 
-enum ColorPatterns { DYNAMIC, HOLD, RED, GREEN,	BLUE, WHITE, PATTERNS_SIZE };
+struct EnvironmentValues {
+	int celsius;
+	int humidity;
+};
 
-enum Letters { A = 10, F, G, H, I, L, O, T, U, _ };
+enum ColorPatterns { DYNAMIC, HOLD, RED, GREEN,	BLUE, WHITE };
+enum DisplayContentMode { TIME, TEMPERATURE, REL_HUMIDITY, CONTENTMODE_SIZE };
+
+enum Letters { A = 10, F, G, H, I, L, O, T, U, R, C, DASH, _ };
 
 DisplaySymbol symbols[] = { { { 0,1,1,1,1,1,1 }, '0'},
 							{ { 0,1,0,0,0,0,1 }, '1'},
@@ -73,6 +80,9 @@ DisplaySymbol symbols[] = { { { 0,1,1,1,1,1,1 }, '0'},
 							{ { 0,1,1,1,1,1,1 }, 'O'},
 							{ { 1,0,0,1,1,1,0 }, 't'},
 							{ { 0,1,0,1,1,1,1 }, 'U'},
+							{ { 1,0,0,0,1,0,0 }, 'r' },
+							{ { 0,0,1,1,1,1,0 }, 'C' },
+							{ { 1,0,0,0,0,0,0 }, '-'},
 							{ { 0,0,0,0,0,0,0 }, ' '} };
 
 LuminositySetting luminositySetting[] =	  { { 0,	{ A,U,T,O } },
@@ -89,12 +99,17 @@ DisplayContent content = { { _, _, _, _ }, false };
 Settings settings = INITIAL_SETTINGS;
 tmElements_t currentTime;
 uint8_t currentLuminosity;
+uint8_t currentDisplayContentMode;
+EnvironmentValues sensorValues;
 BH1750 lightMeter;
+SI7021 environmentSensor;
 bool diagnosticMode;
 
 void setup(){
 	Wire.begin();
 	lightMeter.begin(BH1750_CONTINUOUS_LOW_RES_MODE);
+	environmentSensor.begin();
+	getTempAndHumidity();
 	LEDS.addLeds<WS2811, LED_DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
 	pinMode(BTN_BRIGHTNESS_PIN, INPUT_PULLUP);
 	pinMode(BTN_COLOR_PIN, INPUT_PULLUP);
@@ -132,6 +147,37 @@ CHSV getColor(uint8_t forPattern)
 		default:
 			return CHSV(settings.color.hue, 0, 255);
 	}
+}
+
+void getTempAndHumidity()
+{
+	si7021_thc result = environmentSensor.getTempAndRH();
+	sensorValues.celsius = result.celsiusHundredths / 100;
+	sensorValues.humidity = result.humidityPercent;
+	DIAGNOSTIC_MODE_PRINTF("Temp: %d C, Rel. Humidity: %d", sensorValues.celsius, sensorValues.humidity);
+}
+
+void showTemperature()
+{
+	struct DisplayContent content;
+	//content.symbols[0] = _;
+	content.symbols[0] = sensorValues.celsius < 0 ? DASH : _;
+	content.symbols[1] = (sensorValues.celsius / 10) % 10;
+	content.symbols[2] = sensorValues.celsius % 10;
+	content.symbols[3] = C;
+	content.showDots = false;
+	updateDisplayContent(content);
+}
+
+void showHumidity()
+{
+	struct DisplayContent content;
+	content.symbols[0] = (sensorValues.humidity / 10) % 10;
+	content.symbols[1] = sensorValues.humidity % 10;
+	content.symbols[2] = R;
+	content.symbols[3] = H;
+	content.showDots = false;
+	updateDisplayContent(content);
 }
 
 void changeLuminosityMode()
@@ -191,7 +237,7 @@ uint8_t luminosityValueBySensor()
 	return map(lightSensor, LIGHTSENSOR_HIGH_LUX, 0, LED_LOWEST_LUMINOSITY, LED_HIGHEST_LUMINOSITY);
 }
 
-void updateDisplayTime() 
+void showTime() 
 {
 	int Now = (currentTime.Hour * 100 + currentTime.Minute);
 	struct DisplayContent content;
@@ -202,6 +248,22 @@ void updateDisplayTime()
 	content.showDots = (currentTime.Second % 2 == 0);
 	updateDisplayContent(content);
 };
+
+void whatToShow(uint8_t contentMode)
+{
+	switch (contentMode)
+	{
+		case TEMPERATURE:
+			showTemperature();
+			break;
+		case REL_HUMIDITY:
+			showHumidity();
+			break;
+		case TIME:
+		default:
+			showTime();
+	}
+}
 
 void updateDisplayContent(struct DisplayContent newContent)
 {
@@ -253,12 +315,19 @@ void printSettings()
 
 void loop()
 {
+	EVERY_N_MILLISECONDS(5000)
+	{
+		getTempAndHumidity();
+		currentDisplayContentMode = (currentDisplayContentMode + 1) % CONTENTMODE_SIZE;
+	}
+
 	EVERY_N_MILLISECONDS(200)
 	{
 		adjustDisplayLuminosity();
 	}
+
 	handleButtonInteraction();
 	RTC.read(currentTime);
-	updateDisplayTime();
+	whatToShow(currentDisplayContentMode);
 	FastLED.delay(1000 / FRAMES_PER_SECOND);
 }
