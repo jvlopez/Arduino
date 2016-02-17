@@ -23,6 +23,8 @@
 #define EEPROM_SETTINGS_ADDR 0
 #define AUTO_ADJUST 0
 #define LIGHTSENSOR_HIGH_LUX 20000
+#define MIN_VALID_TEMP -10
+#define MAX_VALID_TEMP 60
 #define LED_LOWEST_LUMINOSITY 10
 #define LED_HIGHEST_LUMINOSITY 255
 #define BLACK CHSV(0, 255, 0)
@@ -59,7 +61,7 @@ struct EnvironmentValues {
 enum ColorPatterns { DYNAMIC, HOLD, RED, GREEN,	BLUE, WHITE };
 enum DisplayContentMode { TIME, TEMPERATURE, REL_HUMIDITY, CONTENTMODE_SIZE };
 
-enum Letters { A = 10, F, G, H, I, L, O, T, U, R, C, DASH, _ };
+enum Letters { A = 10, F, G, H, I, L, O, o, T, U, R, C, DEGR, DASH, _ };
 
 DisplaySymbol symbols[] = { { { 0,1,1,1,1,1,1 }, '0'},
 							{ { 0,1,0,0,0,0,1 }, '1'},
@@ -78,10 +80,12 @@ DisplaySymbol symbols[] = { { { 0,1,1,1,1,1,1 }, '0'},
 							{ { 0,0,0,1,1,0,0 }, 'I'},
 							{ { 0,0,0,1,1,1,0 }, 'L'},
 							{ { 0,1,1,1,1,1,1 }, 'O'},
+							{ { 1,0,0,0,1,1,1 }, 'o'},
 							{ { 1,0,0,1,1,1,0 }, 't'},
 							{ { 0,1,0,1,1,1,1 }, 'U'},
-							{ { 1,0,0,0,1,0,0 }, 'r' },
-							{ { 0,0,1,1,1,1,0 }, 'C' },
+							{ { 1,0,0,0,1,0,0 }, 'r'},
+							{ { 0,0,1,1,1,1,0 }, 'C'},
+							{ { 1,1,1,1,0,0,0 }, 176},	// ° char
 							{ { 1,0,0,0,0,0,0 }, '-'},
 							{ { 0,0,0,0,0,0,0 }, ' '} };
 
@@ -154,16 +158,23 @@ void getTempAndHumidity()
 	si7021_thc result = environmentSensor.getTempAndRH();
 	sensorValues.celsius = result.celsiusHundredths / 100;
 	sensorValues.humidity = result.humidityPercent;
-	DIAGNOSTIC_MODE_PRINTF("Temp: %d C, Rel. Humidity: %d", sensorValues.celsius, sensorValues.humidity);
+	DIAGNOSTIC_MODE_PRINTF("Temp (celsius): %d, Rel. Humidity (percent): %d", sensorValues.celsius, sensorValues.humidity);
 }
 
 void showTemperature()
 {
 	struct DisplayContent content;
-	//content.symbols[0] = _;
-	content.symbols[0] = sensorValues.celsius < 0 ? DASH : _;
-	content.symbols[1] = (sensorValues.celsius / 10) % 10;
-	content.symbols[2] = sensorValues.celsius % 10;
+	if (sensorValues.celsius <= MIN_VALID_TEMP || sensorValues.celsius > MAX_VALID_TEMP)
+	{
+		content.symbols[0] = DASH;
+		content.symbols[1] = DASH;
+	}
+	else {
+		content.symbols[0] = sensorValues.celsius < 0 ? DASH : (sensorValues.celsius / 10) % 10;
+		content.symbols[1] = abs(sensorValues.celsius % 10);
+	}
+
+	content.symbols[2] = DEGR;
 	content.symbols[3] = C;
 	content.showDots = false;
 	updateDisplayContent(content);
@@ -174,8 +185,8 @@ void showHumidity()
 	struct DisplayContent content;
 	content.symbols[0] = (sensorValues.humidity / 10) % 10;
 	content.symbols[1] = sensorValues.humidity % 10;
-	content.symbols[2] = R;
-	content.symbols[3] = H;
+	content.symbols[2] = DEGR;
+	content.symbols[3] = o;
 	content.showDots = false;
 	updateDisplayContent(content);
 }
