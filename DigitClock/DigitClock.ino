@@ -30,12 +30,13 @@
 #define BLACK CHSV(0, 255, 0)
 #define FRAMES_PER_SECOND 24
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
-#define INITIAL_SETTINGS { LED_HIGHEST_LUMINOSITY, 0, getColor(RED) }
+#define INITIAL_SETTINGS { LED_HIGHEST_LUMINOSITY, 0, getColor(RED), true }
 
 struct Settings {
 	uint8_t luminosity;
 	uint8_t colorPattern;
 	CHSV color;
+	uint16_t showEnvironmentData;
 };
 
 struct DisplaySymbol {
@@ -53,7 +54,7 @@ struct LuminositySetting {
 	byte text[4];
 };
 
-struct EnvironmentValues {
+struct EnvironmentData {
 	int celsius;
 	int humidity;
 };
@@ -99,12 +100,12 @@ LuminositySetting luminositySetting[] =	  { { 0,	{ A,U,T,O } },
 ColorPatterns colorPatterns[] = { DYNAMIC, HOLD, RED, GREEN, BLUE, WHITE };
 uint8_t digitOffset[] = { 0, 7, 16, 23 };
 CRGB leds[NUM_LEDS]; // Define the color array of the LED strip
-DisplayContent content = { { _, _, _, _ }, false };
+DisplayContent content = { { _, _, _, _ }, 1 };
 Settings settings = INITIAL_SETTINGS;
 tmElements_t currentTime;
 uint8_t currentLuminosity;
 uint8_t currentDisplayContentMode;
-EnvironmentValues sensorValues;
+EnvironmentData environmentData;
 BH1750 lightMeter;
 SI7021 environmentSensor;
 bool diagnosticMode;
@@ -156,22 +157,22 @@ CHSV getColor(uint8_t forPattern)
 void getTempAndHumidity()
 {
 	si7021_thc result = environmentSensor.getTempAndRH();
-	sensorValues.celsius = result.celsiusHundredths / 100;
-	sensorValues.humidity = result.humidityPercent;
-	DIAGNOSTIC_MODE_PRINTF("Temp (celsius): %d, Rel. Humidity (percent): %d", sensorValues.celsius, sensorValues.humidity);
+	environmentData.celsius = result.celsiusHundredths / 100;
+	environmentData.humidity = result.humidityPercent;
+	DIAGNOSTIC_MODE_PRINTF("Temp (celsius): %d, Rel. Humidity (percent): %d", environmentData.celsius, environmentData.humidity);
 }
 
 void showTemperature()
 {
 	struct DisplayContent content;
-	if (sensorValues.celsius <= MIN_VALID_TEMP || sensorValues.celsius > MAX_VALID_TEMP)
+	if (environmentData.celsius <= MIN_VALID_TEMP || environmentData.celsius > MAX_VALID_TEMP)
 	{
 		content.symbols[0] = DASH;
 		content.symbols[1] = DASH;
 	}
 	else {
-		content.symbols[0] = sensorValues.celsius < 0 ? DASH : (sensorValues.celsius / 10) % 10;
-		content.symbols[1] = abs(sensorValues.celsius % 10);
+		content.symbols[0] = environmentData.celsius < 0 ? DASH : (environmentData.celsius / 10) % 10;
+		content.symbols[1] = abs(environmentData.celsius % 10);
 	}
 
 	content.symbols[2] = DEGR;
@@ -183,8 +184,8 @@ void showTemperature()
 void showHumidity()
 {
 	struct DisplayContent content;
-	content.symbols[0] = (sensorValues.humidity / 10) % 10;
-	content.symbols[1] = sensorValues.humidity % 10;
+	content.symbols[0] = (environmentData.humidity / 10) % 10;
+	content.symbols[1] = environmentData.humidity % 10;
 	content.symbols[2] = DEGR;
 	content.symbols[3] = o;
 	content.showDots = false;
@@ -215,10 +216,16 @@ void adjustDisplayLuminosity()
 
 void handleButtonInteraction()
 {
-	byte buttonsPressed = PRESSED_BUTTONS_ARRAY;
-	if(buttonsPressed)
+	if(PRESSED_BUTTONS_ARRAY)
 	{
-		if (BTN_IS_PRESSED(BTN_HOURS_PIN, buttonsPressed))
+		delay(100);	// Wait for more buttons
+		byte buttonsPressed = PRESSED_BUTTONS_ARRAY; // Fix the pressed buttons array
+		if (BTN_IS_PRESSED(BTN_HOURS_PIN, buttonsPressed) && BTN_IS_PRESSED(BTN_MINUTES_PIN, buttonsPressed))
+		{
+			settings.showEnvironmentData = settings.showEnvironmentData ? 0 : 1;
+			currentDisplayContentMode = settings.showEnvironmentData ? TEMPERATURE : TIME;
+		}
+		else if (BTN_IS_PRESSED(BTN_HOURS_PIN, buttonsPressed))
 		{
 			currentTime.Hour = (++currentTime.Hour % 24);
 			RTC.write(currentTime);
@@ -237,7 +244,7 @@ void handleButtonInteraction()
 			settings.colorPattern = (settings.colorPattern + 1) % ARRAY_SIZE(colorPatterns);
 		}
 		persistSettings();
-		delay(400);
+		delay(300);
 	}
 }
 
@@ -321,15 +328,22 @@ void persistSettings()
 
 void printSettings()
 {
-	DIAGNOSTIC_MODE_PRINTF("[Settings] Color Mode: %d HSV: [%d,%d,%d], Brightness Mode: %d", settings.colorPattern, settings.color.hue, settings.color.saturation, settings.color.value, settings.luminosity);
+	DIAGNOSTIC_MODE_PRINTF("[Settings] Color Mode: %d HSV: [%d,%d,%d], Brightness Mode: %d, Show Environment Data: %d", 
+		settings.colorPattern, settings.color.hue, settings.color.saturation, settings.color.value, settings.luminosity, settings.showEnvironmentData);
 }
 
 void loop()
 {
 	EVERY_N_MILLISECONDS(5000)
 	{
-		getTempAndHumidity();
-		currentDisplayContentMode = (currentDisplayContentMode + 1) % CONTENTMODE_SIZE;
+		if (settings.showEnvironmentData)
+		{
+			getTempAndHumidity();
+			currentDisplayContentMode = (currentDisplayContentMode + 1) % CONTENTMODE_SIZE;
+		}
+		else {
+			currentDisplayContentMode = TIME;
+		}
 	}
 
 	EVERY_N_MILLISECONDS(200)
