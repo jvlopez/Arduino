@@ -7,7 +7,7 @@
 #include <SI7021.h>
 #include "ardprintf.h"
 
-#define DIAGNOSTIC_MODE_PRINTF(x, ...) if(diagnosticMode) { ardprintf(x, __VA_ARGS__); }
+#define PRINTF(x, ...) ardprintf(x, __VA_ARGS__)
 #define NUM_LEDS 30 // Number of LED controllers (3 LEDS per controller)
 #define COLOR_ORDER RGB  // Define LED strip color order
 #define PULLUP_PIN_ACTIVE(pin) ~digitalRead(pin) & 1
@@ -120,18 +120,9 @@ void setup(){
 	pinMode(BTN_COLOR_PIN, INPUT_PULLUP);
 	pinMode(BTN_HOURS_PIN, INPUT_PULLUP);
 	pinMode(BTN_MINUTES_PIN, INPUT_PULLUP);
-	checkForDiagnosticMode();
+	Serial.begin(9600);
 	getSettings();
-}
-
-void checkForDiagnosticMode()
-{
-	diagnosticMode = PRESSED_BUTTONS_ARRAY ? true : false;
-	if (diagnosticMode)
-	{
-		Serial.begin(9600);
-		DIAGNOSTIC_MODE_PRINTF("[DIAGNOSTIC MODE ENABLED] Button was pressed during startup. LEDS: %d", NUM_LEDS);
-	}
+	PRINTF("Initialization completed! Nr. of LEDS configured: %d", NUM_LEDS);
 }
 
 CHSV getColor(uint8_t forPattern)
@@ -159,7 +150,7 @@ void getTempAndHumidity()
 	si7021_thc result = environmentSensor.getTempAndRH();
 	environmentData.celsius = result.celsiusHundredths / 100;
 	environmentData.humidity = result.humidityPercent;
-	DIAGNOSTIC_MODE_PRINTF("Temp (celsius): %d, Rel. Humidity (percent): %d", environmentData.celsius, environmentData.humidity);
+	PRINTF("Temp (celsius): %d, Rel. Humidity (percent): %d", environmentData.celsius, environmentData.humidity);
 }
 
 void showTemperature()
@@ -208,7 +199,7 @@ void adjustDisplayLuminosity()
 	settings.luminosity == AUTO_ADJUST ? luminosity = luminosityValueBySensor() : luminosity = luminositySetting[settings.luminosity].value;
 	if (currentLuminosity != luminosity)
 	{
-		DIAGNOSTIC_MODE_PRINTF("Luminosity changed %d --> %d", currentLuminosity, luminosity);
+		PRINTF("Luminosity changed %d --> %d", currentLuminosity, luminosity);
 		currentLuminosity = luminosity;
 		LEDS.setBrightness(currentLuminosity);
 	}
@@ -303,7 +294,7 @@ void updateDisplayContent(struct DisplayContent newContent)
 	bool contentUpdated = (content.showDots != newContent.showDots) | memcmp(content.symbols, newContent.symbols, sizeof(content.symbols));
 	if (contentUpdated) {
 		content = newContent;
-		DIAGNOSTIC_MODE_PRINTF("[Display Changed] %c%c%c%c%c", symbols[content.symbols[0]].symbol, symbols[content.symbols[1]].symbol,
+		PRINTF("[Display Changed] %c%c%c%c%c", symbols[content.symbols[0]].symbol, symbols[content.symbols[1]].symbol,
 			content.showDots ? ':' : ' ', symbols[content.symbols[2]].symbol, symbols[content.symbols[3]].symbol);
 	}
 }
@@ -313,7 +304,7 @@ void getSettings()
 	EEPROM.get(EEPROM_SETTINGS_ADDR, settings);
 	if (settings.colorPattern >= ARRAY_SIZE(colorPatterns))
 	{
-		DIAGNOSTIC_MODE_PRINTF("No (or corrupt) settings found (EEPROM addr %d). Storing initial settings.", EEPROM_SETTINGS_ADDR);
+		PRINTF("No (or corrupt) settings found (EEPROM addr %d). Storing initial settings.", EEPROM_SETTINGS_ADDR);
 		settings = INITIAL_SETTINGS;
 		persistSettings();
 	}
@@ -328,7 +319,7 @@ void persistSettings()
 
 void printSettings()
 {
-	DIAGNOSTIC_MODE_PRINTF("[Settings] Color Mode: %d HSV: [%d,%d,%d], Brightness Mode: %d, Show Environment Data: %d", 
+	PRINTF("[Settings] Color Mode: %d HSV: [%d,%d,%d], Brightness Mode: %d, Show Environment Data: %d", 
 		settings.colorPattern, settings.color.hue, settings.color.saturation, settings.color.value, settings.luminosity, settings.showEnvironmentData);
 }
 
