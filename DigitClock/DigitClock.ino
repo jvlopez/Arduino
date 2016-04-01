@@ -19,6 +19,11 @@
 #define BTN_COLOR_PIN 5
 #define PIN_ACTIVE(x) PULLUP_PIN_ACTIVE_ARRAY(x)
 #define PRESSED_BUTTONS_ARRAY (PIN_ACTIVE(BTN_HOURS_PIN) | PIN_ACTIVE(BTN_MINUTES_PIN) | PIN_ACTIVE(BTN_BRIGHTNESS_PIN) | PIN_ACTIVE(BTN_COLOR_PIN))
+#define IR_CMD_HOURS 'H'
+#define IR_CMD_MINUTES 'M'
+#define IR_CMD_BRIGHTNESS 'B'
+#define IR_CMD_COLOR 'C'
+#define IR_CMD_SWITCH_DISPLAYDATA 'D'
 #define LED_DATA_PIN 6
 #define EEPROM_SETTINGS_ADDR 0
 #define AUTO_ADJUST 0
@@ -108,6 +113,7 @@ uint8_t currentDisplayContentMode;
 EnvironmentData environmentData;
 BH1750 lightMeter;
 SI7021 environmentSensor;
+char receivedIrCommand = '?';
 bool diagnosticMode;
 
 void setup(){
@@ -205,32 +211,42 @@ void adjustDisplayLuminosity()
 	}
 }
 
+bool irCommandReceived() {
+	if (Serial.available() > 0) {
+		receivedIrCommand = Serial.read();
+		PRINTF("IR Command received: %c", receivedIrCommand);
+		return true;
+	}
+	receivedIrCommand = '?';
+	return false;
+}
+
 void handleButtonInteraction()
 {
-	if(PRESSED_BUTTONS_ARRAY)
+	if(PRESSED_BUTTONS_ARRAY || irCommandReceived())
 	{
 		delay(100);	// Wait for more buttons
 		byte buttonsPressed = PRESSED_BUTTONS_ARRAY; // Fix the pressed buttons array
-		if (BTN_IS_PRESSED(BTN_HOURS_PIN, buttonsPressed) && BTN_IS_PRESSED(BTN_MINUTES_PIN, buttonsPressed))
+		if ((BTN_IS_PRESSED(BTN_HOURS_PIN, buttonsPressed) && BTN_IS_PRESSED(BTN_MINUTES_PIN, buttonsPressed) || receivedIrCommand == IR_CMD_SWITCH_DISPLAYDATA))
 		{
 			settings.showEnvironmentData = settings.showEnvironmentData ? 0 : 1;
 			currentDisplayContentMode = settings.showEnvironmentData ? TEMPERATURE : TIME;
 		}
-		else if (BTN_IS_PRESSED(BTN_HOURS_PIN, buttonsPressed))
+		else if (BTN_IS_PRESSED(BTN_HOURS_PIN, buttonsPressed) || receivedIrCommand == IR_CMD_HOURS)
 		{
 			currentTime.Hour = (++currentTime.Hour % 24);
 			RTC.write(currentTime);
 		}
-		else if (BTN_IS_PRESSED(BTN_MINUTES_PIN, buttonsPressed))
+		else if (BTN_IS_PRESSED(BTN_MINUTES_PIN, buttonsPressed) || receivedIrCommand == IR_CMD_MINUTES)
 		{
 			currentTime.Minute = (++currentTime.Minute % 60);
 			RTC.write(currentTime);
 		}
-		else if (BTN_IS_PRESSED(BTN_BRIGHTNESS_PIN, buttonsPressed))
+		else if (BTN_IS_PRESSED(BTN_BRIGHTNESS_PIN, buttonsPressed) || receivedIrCommand == IR_CMD_BRIGHTNESS)
 		{
 			changeLuminosityMode();
 		}
-		else if (BTN_IS_PRESSED(BTN_COLOR_PIN, buttonsPressed))
+		else if (BTN_IS_PRESSED(BTN_COLOR_PIN, buttonsPressed) || receivedIrCommand == IR_CMD_COLOR)
 		{
 			settings.colorPattern = (settings.colorPattern + 1) % ARRAY_SIZE(colorPatterns);
 		}
