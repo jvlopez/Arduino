@@ -214,7 +214,7 @@ void adjustDisplayLuminosity()
 bool irCommandReceived() {
 	if (Serial.available() > 0) {
 		receivedIrCommand = Serial.read();
-		PRINTF("IR Command received: %c", receivedIrCommand);
+		PRINTF("IR Command received: HEX %c DEC %d", receivedIrCommand, receivedIrCommand);
 		return true;
 	}
 	receivedIrCommand = '?';

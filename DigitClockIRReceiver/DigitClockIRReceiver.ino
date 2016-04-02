@@ -53,7 +53,7 @@ void loop() {
 
 		if (knownCommand)
 		{
-			Serial.println(command);
+			Serial.print(command);
 		}
 
 		delay(300);
