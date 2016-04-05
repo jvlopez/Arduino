@@ -3,9 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
 VisualStudioVersion = 14.0.24720.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DigitClock", "DigitClock.vcxproj", "{6FF53AD7-B6B7-4DA0-BD6D-72557AFFCFA8}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DigitClock", "DigitClock\DigitClock.vcxproj", "{6FF53AD7-B6B7-4DA0-BD6D-72557AFFCFA8}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DigitClockIRReceiver", "..\DigitClockIRReceiver\DigitClockIRReceiver.vcxproj", "{B4A76914-61B5-4E82-B2E4-2BD13B40E0A5}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DigitClockIRReceiver", "DigitClockIRReceiver\DigitClockIRReceiver.vcxproj", "{B4A76914-61B5-4E82-B2E4-2BD13B40E0A5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
