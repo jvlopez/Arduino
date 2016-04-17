@@ -19,11 +19,6 @@
 #define BTN_COLOR_PIN 5
 #define PIN_ACTIVE(x) PULLUP_PIN_ACTIVE_ARRAY(x)
 #define PRESSED_BUTTONS_ARRAY (PIN_ACTIVE(BTN_HOURS_PIN) | PIN_ACTIVE(BTN_MINUTES_PIN) | PIN_ACTIVE(BTN_BRIGHTNESS_PIN) | PIN_ACTIVE(BTN_COLOR_PIN))
-#define IR_CMD_HOURS 'H'
-#define IR_CMD_MINUTES 'M'
-#define IR_CMD_BRIGHTNESS 'B'
-#define IR_CMD_COLOR 'C'
-#define IR_CMD_SWITCH_DISPLAYDATA 'D'
 #define LED_DATA_PIN 6
 #define EEPROM_SETTINGS_ADDR 0
 #define AUTO_ADJUST 0
@@ -35,13 +30,14 @@
 #define BLACK CHSV(0, 255, 0)
 #define FRAMES_PER_SECOND 24
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
-#define INITIAL_SETTINGS { LED_HIGHEST_LUMINOSITY, 0, getColor(RED), true }
+#define INITIAL_SETTINGS { LED_HIGHEST_LUMINOSITY, 0, getColor(RED), true, true }
 
 struct Settings {
 	uint8_t luminosity;
 	uint8_t colorPattern;
 	CHSV color;
-	uint16_t showEnvironmentData;
+	uint8_t showEnvironmentData;
+	uint8_t displayIsOn;
 };
 
 struct DisplaySymbol {
@@ -99,8 +95,7 @@ LuminositySetting luminositySetting[] =	  { { 0,	{ A,U,T,O } },
 											{ 64,	{ L,O,_,_ } }, 
 											{ 128,	{ H,A,L,F } }, 
 											{ 192,	{ H,I,G,H } }, 
-											{ 255,	{ F,U,L,L } },
-											{ 0,	{ O,F,F,_ } } };
+											{ 255,	{ F,U,L,L } } };
 
 ColorPatterns colorPatterns[] = { DYNAMIC, HOLD, RED, GREEN, BLUE, WHITE };
 uint8_t digitOffset[] = { 0, 7, 16, 23 };
@@ -114,7 +109,7 @@ EnvironmentData environmentData;
 BH1750 lightMeter;
 SI7021 environmentSensor;
 char receivedIrCommand = '?';
-bool diagnosticMode;
+bool displayIsOn = false;
 
 void setup(){
 	Wire.begin();
@@ -191,16 +186,38 @@ void showHumidity()
 
 void changeLuminosityMode()
 {
-	settings.luminosity = (settings.luminosity + 1) % ARRAY_SIZE(luminositySetting);
+	if (settings.displayIsOn > 0)
+	{
+		settings.luminosity = (settings.luminosity + 1) % ARRAY_SIZE(luminositySetting);
+	}
+	else {
+		settings.displayIsOn = 1;
+	}
 	LEDS.setBrightness(LED_HIGHEST_LUMINOSITY);
 	struct DisplayContent content = { {}, false };
 	memcpy(content.symbols, luminositySetting[settings.luminosity].text, sizeof(content.symbols));
 	updateDisplayContent(content);
-	delay(1000);
+	delay(600);
+}
+
+void powerOff()
+{
+	if (settings.displayIsOn > 0)
+	{
+		settings.displayIsOn = 0;
+		LEDS.setBrightness(LED_HIGHEST_LUMINOSITY);
+		updateDisplayContent({ { O,F,F,_ }, false });
+		delay(600);
+	}
 }
 
 void adjustDisplayLuminosity()
 {
+	if (!settings.displayIsOn)
+	{
+		LEDS.setBrightness(0);
+		return;
+	}
 	uint8_t luminosity;
 	settings.luminosity == AUTO_ADJUST ? luminosity = luminosityValueBySensor() : luminosity = luminositySetting[settings.luminosity].value;
 	if (currentLuminosity != luminosity)
@@ -227,29 +244,34 @@ void handleButtonInteraction()
 	{
 		delay(100);	// Wait for more buttons
 		byte buttonsPressed = PRESSED_BUTTONS_ARRAY; // Fix the pressed buttons array
-		if ((BTN_IS_PRESSED(BTN_HOURS_PIN, buttonsPressed) && BTN_IS_PRESSED(BTN_MINUTES_PIN, buttonsPressed) || receivedIrCommand == IR_CMD_SWITCH_DISPLAYDATA))
+		if ((BTN_IS_PRESSED(BTN_HOURS_PIN, buttonsPressed) && BTN_IS_PRESSED(BTN_MINUTES_PIN, buttonsPressed) || receivedIrCommand == 'D'))
 		{
 			settings.showEnvironmentData = settings.showEnvironmentData ? 0 : 1;
 			currentDisplayContentMode = settings.showEnvironmentData ? TEMPERATURE : TIME;
 		}
-		else if (BTN_IS_PRESSED(BTN_HOURS_PIN, buttonsPressed) || receivedIrCommand == IR_CMD_HOURS)
+		else if ((BTN_IS_PRESSED(BTN_BRIGHTNESS_PIN, buttonsPressed) && BTN_IS_PRESSED(BTN_COLOR_PIN, buttonsPressed) || receivedIrCommand == '0'))
+		{
+			powerOff();
+		}
+		else if (BTN_IS_PRESSED(BTN_HOURS_PIN, buttonsPressed) || receivedIrCommand == 'H')
 		{
 			currentTime.Hour = (++currentTime.Hour % 24);
 			RTC.write(currentTime);
 		}
-		else if (BTN_IS_PRESSED(BTN_MINUTES_PIN, buttonsPressed) || receivedIrCommand == IR_CMD_MINUTES)
+		else if (BTN_IS_PRESSED(BTN_MINUTES_PIN, buttonsPressed) || receivedIrCommand == 'M')
 		{
 			currentTime.Minute = (++currentTime.Minute % 60);
 			RTC.write(currentTime);
 		}
-		else if (BTN_IS_PRESSED(BTN_BRIGHTNESS_PIN, buttonsPressed) || receivedIrCommand == IR_CMD_BRIGHTNESS)
+		else if (BTN_IS_PRESSED(BTN_BRIGHTNESS_PIN, buttonsPressed) || receivedIrCommand == 'B' || receivedIrCommand == '1')
 		{
 			changeLuminosityMode();
 		}
-		else if (BTN_IS_PRESSED(BTN_COLOR_PIN, buttonsPressed) || receivedIrCommand == IR_CMD_COLOR)
+		else if (BTN_IS_PRESSED(BTN_COLOR_PIN, buttonsPressed) || receivedIrCommand == 'C')
 		{
 			settings.colorPattern = (settings.colorPattern + 1) % ARRAY_SIZE(colorPatterns);
 		}
+		
 		persistSettings();
 		delay(300);
 	}
@@ -335,8 +357,8 @@ void persistSettings()
 
 void printSettings()
 {
-	PRINTF("[Settings] Color Mode: %d HSV: [%d,%d,%d], Brightness Mode: %d, Show Environment Data: %d", 
-		settings.colorPattern, settings.color.hue, settings.color.saturation, settings.color.value, settings.luminosity, settings.showEnvironmentData);
+	PRINTF("[Settings] Color Mode: %d HSV: [%d,%d,%d], Light are On: %d, Brightness Mode: %d, Show Environment Data: %d", 
+		settings.colorPattern, settings.color.hue, settings.color.saturation, settings.color.value, settings.displayIsOn, settings.luminosity, settings.showEnvironmentData);
 }
 
 void loop()
