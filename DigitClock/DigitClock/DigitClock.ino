@@ -17,6 +17,7 @@
 #define BTN_MINUTES_PIN 3
 #define BTN_BRIGHTNESS_PIN 4
 #define BTN_COLOR_PIN 5
+#define MAX_DYNAMIC_COLOR_SPEED 10
 #define PIN_ACTIVE(x) PULLUP_PIN_ACTIVE_ARRAY(x)
 #define PRESSED_BUTTONS_ARRAY (PIN_ACTIVE(BTN_HOURS_PIN) | PIN_ACTIVE(BTN_MINUTES_PIN) | PIN_ACTIVE(BTN_BRIGHTNESS_PIN) | PIN_ACTIVE(BTN_COLOR_PIN))
 #define LED_DATA_PIN 6
@@ -30,7 +31,7 @@
 #define BLACK CHSV(0, 255, 0)
 #define FRAMES_PER_SECOND 24
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
-#define INITIAL_SETTINGS { LED_HIGHEST_LUMINOSITY, 0, getColor(RED), true, true }
+#define INITIAL_SETTINGS { LED_HIGHEST_LUMINOSITY, 0, getColor(RED), true, true, MAX_DYNAMIC_COLOR_SPEED / 2 }
 
 struct Settings {
 	uint8_t luminosity;
@@ -38,6 +39,7 @@ struct Settings {
 	CHSV color;
 	uint8_t showEnvironmentData;
 	uint8_t displayIsOn;
+	uint8_t dynamicColorSpeed;
 };
 
 struct DisplaySymbol {
@@ -63,33 +65,35 @@ struct EnvironmentData {
 enum ColorPatterns { DYNAMIC, HOLD, RED, GREEN,	BLUE, WHITE };
 enum DisplayContentMode { TIME, TEMPERATURE, REL_HUMIDITY, CONTENTMODE_SIZE };
 
-enum Letters { A = 10, F, G, H, I, L, O, o, T, U, R, C, DEGR, DASH, _ };
+enum Letters { A = 10, F, G, H, I, L, O, o, T, U, R, C, S, P, DEGR, DASH, _ };
 
-DisplaySymbol symbols[] = { { { 0,1,1,1,1,1,1 }, '0'},
-							{ { 0,1,0,0,0,0,1 }, '1'},
-							{ { 1,1,1,0,1,1,0 }, '2'},
-							{ { 1,1,1,0,0,1,1 }, '3'},
-							{ { 1,1,0,1,0,0,1 }, '4'},
-							{ { 1,0,1,1,0,1,1 }, '5'},
-							{ { 1,0,1,1,1,1,1 }, '6'},
-							{ { 0,1,1,0,0,0,1 }, '7'},
-							{ { 1,1,1,1,1,1,1 }, '8'},
-							{ { 1,1,1,1,0,1,1 }, '9'},
-							{ { 1,1,1,1,1,0,1 }, 'A'},
-							{ { 1,0,1,1,1,0,0 }, 'F'},
-							{ { 1,0,1,1,1,1,1 }, 'G'},
-							{ { 1,1,0,1,1,0,1 }, 'H'},
-							{ { 0,0,0,1,1,0,0 }, 'I'},
-							{ { 0,0,0,1,1,1,0 }, 'L'},
-							{ { 0,1,1,1,1,1,1 }, 'O'},
-							{ { 1,0,0,0,1,1,1 }, 'o'},
-							{ { 1,0,0,1,1,1,0 }, 't'},
-							{ { 0,1,0,1,1,1,1 }, 'U'},
-							{ { 1,0,0,0,1,0,0 }, 'r'},
-							{ { 0,0,1,1,1,1,0 }, 'C'},
-							{ { 1,1,1,1,0,0,0 }, 176},	// ° char
-							{ { 1,0,0,0,0,0,0 }, '-'},
-							{ { 0,0,0,0,0,0,0 }, ' '} };
+DisplaySymbol symbols[] = { { { 0,1,1,1,1,1,1 }, '0' },
+							{ { 0,1,0,0,0,0,1 }, '1' },
+							{ { 1,1,1,0,1,1,0 }, '2' },
+							{ { 1,1,1,0,0,1,1 }, '3' },
+							{ { 1,1,0,1,0,0,1 }, '4' },
+							{ { 1,0,1,1,0,1,1 }, '5' },
+							{ { 1,0,1,1,1,1,1 }, '6' },
+							{ { 0,1,1,0,0,0,1 }, '7' },
+							{ { 1,1,1,1,1,1,1 }, '8' },
+							{ { 1,1,1,1,0,1,1 }, '9' },
+							{ { 1,1,1,1,1,0,1 }, 'A' },
+							{ { 1,0,1,1,1,0,0 }, 'F' },
+							{ { 1,0,1,1,1,1,1 }, 'G' },
+							{ { 1,1,0,1,1,0,1 }, 'H' },
+							{ { 0,0,0,1,1,0,0 }, 'I' },
+							{ { 0,0,0,1,1,1,0 }, 'L' },
+							{ { 0,1,1,1,1,1,1 }, 'O' },
+							{ { 1,0,0,0,1,1,1 }, 'o' },
+							{ { 1,0,0,1,1,1,0 }, 't' },
+							{ { 0,1,0,1,1,1,1 }, 'U' },
+							{ { 1,0,0,0,1,0,0 }, 'r' },
+							{ { 0,0,1,1,1,1,0 }, 'C' },
+							{ { 1,0,1,1,0,1,1 }, 'S' },
+							{ { 1,1,1,1,1,0,0 }, 'P' },
+							{ { 1,1,1,1,0,0,0 }, 176 },	// ° char
+							{ { 1,0,0,0,0,0,0 }, '-' },
+							{ { 0,0,0,0,0,0,0 }, ' ' } };
 
 LuminositySetting luminositySetting[] =	  { { 0,	{ A,U,T,O } },
 											{ 64,	{ L,O,_,_ } }, 
@@ -110,6 +114,7 @@ BH1750 lightMeter;
 SI7021 environmentSensor;
 char receivedIrCommand = '?';
 bool displayIsOn = false;
+uint8_t speedCounter = 0;
 
 void setup(){
 	Wire.begin();
@@ -131,7 +136,12 @@ CHSV getColor(uint8_t forPattern)
 	switch (forPattern)
 	{
 		case DYNAMIC:
-			settings.color.hue += 1;
+			speedCounter += 1;
+			if (speedCounter % (MAX_DYNAMIC_COLOR_SPEED - settings.dynamicColorSpeed) == 0)
+			{
+				settings.color.hue += 1;
+				speedCounter = 0;
+			}
 		case HOLD:
 			return CHSV(settings.color.hue, 255, 255);
 		case RED:
@@ -197,7 +207,7 @@ void changeLuminosityMode()
 	struct DisplayContent content = { {}, false };
 	memcpy(content.symbols, luminositySetting[settings.luminosity].text, sizeof(content.symbols));
 	updateDisplayContent(content);
-	delay(600);
+	delay(500);
 }
 
 void powerOff()
@@ -207,7 +217,7 @@ void powerOff()
 		settings.displayIsOn = 0;
 		LEDS.setBrightness(LED_HIGHEST_LUMINOSITY);
 		updateDisplayContent({ { O,F,F,_ }, false });
-		delay(600);
+		delay(500);
 	}
 }
 
@@ -253,6 +263,14 @@ void handleButtonInteraction()
 		{
 			powerOff();
 		}
+		else if (receivedIrCommand == '1' && settings.displayIsOn == 0)
+		{
+			changeLuminosityMode();
+		}
+		else if (BTN_IS_PRESSED(BTN_BRIGHTNESS_PIN, buttonsPressed) || receivedIrCommand == 'B')
+		{
+			changeLuminosityMode();
+		}
 		else if (BTN_IS_PRESSED(BTN_HOURS_PIN, buttonsPressed) || receivedIrCommand == 'H')
 		{
 			currentTime.Hour = (++currentTime.Hour % 24);
@@ -263,13 +281,19 @@ void handleButtonInteraction()
 			currentTime.Minute = (++currentTime.Minute % 60);
 			RTC.write(currentTime);
 		}
-		else if (BTN_IS_PRESSED(BTN_BRIGHTNESS_PIN, buttonsPressed) || receivedIrCommand == 'B' || receivedIrCommand == '1')
-		{
-			changeLuminosityMode();
-		}
 		else if (BTN_IS_PRESSED(BTN_COLOR_PIN, buttonsPressed) || receivedIrCommand == 'C')
 		{
 			settings.colorPattern = (settings.colorPattern + 1) % ARRAY_SIZE(colorPatterns);
+		}
+		else if (receivedIrCommand == '+' && settings.dynamicColorSpeed < (MAX_DYNAMIC_COLOR_SPEED - 1))
+		{
+			settings.dynamicColorSpeed += 1;
+			showSpeed();
+		}
+		else if (receivedIrCommand == '-' && settings.dynamicColorSpeed > 1)
+		{
+			settings.dynamicColorSpeed -= 1;
+			showSpeed();
 		}
 		
 		persistSettings();
@@ -282,6 +306,17 @@ uint8_t luminosityValueBySensor()
 	uint16_t lightSensor = lightMeter.readLightLevel();
 	lightSensor = min(lightSensor, LIGHTSENSOR_HIGH_LUX);
 	return map(lightSensor, LIGHTSENSOR_HIGH_LUX, 0, LED_LOWEST_LUMINOSITY, LED_HIGHEST_LUMINOSITY);
+}
+
+void showSpeed()
+{
+	struct DisplayContent content;
+	content.symbols[0] = S;
+	content.symbols[1] = P;
+	content.symbols[2] = _;
+	content.symbols[3] = settings.dynamicColorSpeed;
+	content.showDots = false;
+	updateDisplayContent(content);
 }
 
 void showTime() 
@@ -340,7 +375,7 @@ void updateDisplayContent(struct DisplayContent newContent)
 void getSettings()
 {
 	EEPROM.get(EEPROM_SETTINGS_ADDR, settings);
-	if (settings.colorPattern >= ARRAY_SIZE(colorPatterns))
+	if (settings.dynamicColorSpeed >= MAX_DYNAMIC_COLOR_SPEED || settings.dynamicColorSpeed == 0)
 	{
 		PRINTF("No (or corrupt) settings found (EEPROM addr %d). Storing initial settings.", EEPROM_SETTINGS_ADDR);
 		settings = INITIAL_SETTINGS;
@@ -357,8 +392,8 @@ void persistSettings()
 
 void printSettings()
 {
-	PRINTF("[Settings] Color Mode: %d HSV: [%d,%d,%d], Light are On: %d, Brightness Mode: %d, Show Environment Data: %d", 
-		settings.colorPattern, settings.color.hue, settings.color.saturation, settings.color.value, settings.displayIsOn, settings.luminosity, settings.showEnvironmentData);
+	PRINTF("[Settings] Color Mode: %d Dynamic Speed: %d, HSV: [%d,%d,%d], Lights are On: %d, Brightness Mode: %d, Show Environment Data: %d", 
+		settings.colorPattern, settings.dynamicColorSpeed, settings.color.hue, settings.color.saturation, settings.color.value, settings.displayIsOn, settings.luminosity, settings.showEnvironmentData);
 }
 
 void loop()

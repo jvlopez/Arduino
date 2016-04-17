@@ -11,8 +11,10 @@
 #include <IRLib.h>
 
 // DVD Player remote buttons
-#define IR_CMD_LIGHTS_POWER_ON 1223			// Power
-#define IR_CMD_LIGHTS_POWER_OFF 66759		// Power
+#define IR_CMD_LIGHTS_POWER_ON 1223			// Power On
+#define IR_CMD_LIGHTS_POWER_ON_ALT 66759	// Power On
+#define IR_CMD_LIGHTS_POWER_OFF 1090		// Eject
+#define IR_CMD_LIGHTS_POWER_OFF_ALT 66626	// Eject
 #define IR_CMD_BRIGHTNESS 1039				// Display
 #define IR_CMD_BRIGHTNESS_ALT 66575			// Display
 #define IR_CMD_COLOR 1233					// Menu
@@ -46,9 +48,11 @@ void loop() {
 		knownCommand = true;
 		switch (irDecoder.value) {
 		case IR_CMD_LIGHTS_POWER_ON:
+		case IR_CMD_LIGHTS_POWER_ON_ALT:
 			command = '1';
 			break;
 		case IR_CMD_LIGHTS_POWER_OFF:
+		case IR_CMD_LIGHTS_POWER_OFF_ALT:
 			command = '0';
 			break;
 		case IR_CMD_BRIGHTNESS:
